@@ -1,0 +1,90 @@
+{
+  "version": "1.0.0",
+  "training_date": "2025-07-02T21:28:27.158990",
+  "metrics": {
+    "accuracy": 0.8459016393442623,
+    "f1_weighted": 0.8466314436630041,
+    "clinical_cost": "220",
+    "recall_high risk": 0.8658536585365854,
+    "recall_low risk": 0.8688524590163934,
+    "recall_mid risk": 0.801980198019802,
+    "confusion_matrix": [
+      [
+        71,
+        4,
+        7
+      ],
+      [
+        2,
+        106,
+        14
+      ],
+      [
+        2,
+        18,
+        81
+      ]
+    ],
+    "calibration": {
+      "prob_true": [
+        0.0,
+        0.0,
+        0.06557377049180328,
+        0.2903225806451613,
+        1.0
+      ],
+      "prob_pred": [
+        0.002789680818059748,
+        0.0055969294104018085,
+        0.015803827819781378,
+        0.26766678983926256,
+        0.9825838217774314
+      ]
+    }
+  },
+  "config": {
+    "data_file": "data/Maternal Health Risk Data Set.csv",
+    "model_output_dir": "models",
+    "log_dir": "logs",
+    "test_size": 0.3,
+    "random_state": 42,
+    "cross_validation_folds": 5,
+    "high_risk_threshold": 0.7,
+    "mid_risk_threshold": 0.4,
+    "low_risk_confidence": 0.9,
+    "clinical_ranges": {
+      "Age": [
+        13,
+        60
+      ],
+      "SystolicBP": [
+        70,
+        200
+      ],
+      "DiastolicBP": [
+        40,
+        120
+      ],
+      "BS": [
+        1,
+        30
+      ],
+      "BodyTemp": [
+        95,
+        104
+      ],
+      "HeartRate": [
+        40,
+        200
+      ]
+    },
+    "risk_costs": {
+      "false_negative_high": 10,
+      "false_positive_high": 3,
+      "false_negative_mid": 5,
+      "false_positive_mid": 2,
+      "false_negative_low": 1,
+      "false_positive_low": 1
+    }
+  }
+}

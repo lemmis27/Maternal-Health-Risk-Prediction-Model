@@ -1,0 +1,168 @@
+2025-07-02 20:18:42,055 - maternal_risk_model - INFO - train_model:51 - Starting model training pipeline
+2025-07-02 20:18:42,055 - maternal_risk_model - INFO - load_data:29 - Loading data from data/Maternal Health Risk Data Set.csv
+2025-07-02 20:18:42,091 - maternal_risk_model - INFO - load_data:39 - Successfully loaded 1014 samples with 7 features
+2025-07-02 20:18:42,097 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 1 outliers in column 'Age' using IQR
+2025-07-02 20:18:42,098 - maternal_risk_model - WARNING - handle_outliers:102 - Detected 47 values outside clinical range for 'Age' after outlier handling
+2025-07-02 20:18:42,106 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 10 outliers in column 'SystolicBP' using IQR
+2025-07-02 20:18:42,117 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BS' using IQR
+2025-07-02 20:18:42,124 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BodyTemp' using IQR
+2025-07-02 20:18:42,131 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 2 outliers in column 'HeartRate' using IQR
+2025-07-02 20:18:42,132 - maternal_risk_model - INFO - handle_outliers:105 - Total IQR outliers handled: 433
+2025-07-02 20:18:42,134 - maternal_risk_model - INFO - train_model:63 - Target classes encoded: ['high risk' 'low risk' 'mid risk']
+2025-07-02 20:18:42,146 - maternal_risk_model - INFO - train_model:71 - Data split - Train samples: 709, Test samples: 305
+2025-07-02 20:18:42,146 - maternal_risk_model - INFO - fit:33 - Fitting feature engineer
+2025-07-02 20:18:42,176 - maternal_risk_model - INFO - train_model:86 - Feature engineering and scaling completed for train and test sets.
+2025-07-02 20:18:42,177 - maternal_risk_model - INFO - train_model:89 - Starting hyperparameter tuning for XGBoost classifier.
+2025-07-02 20:19:02,964 - maternal_risk_model - INFO - train_model:120 - Best parameters found: {'classifier__learning_rate': 0.1, 'classifier__max_depth': 4, 'classifier__n_estimators': 300, 'classifier__subsample': 0.8}
+2025-07-02 20:19:02,964 - maternal_risk_model - INFO - train_model:121 - Best balanced accuracy score: 0.8164
+2025-07-02 20:19:02,965 - maternal_risk_model - INFO - train_model:124 - Calibrating the best model using Isotonic regression.
+2025-07-02 20:19:13,580 - maternal_risk_model - INFO - train_model:129 - Model calibration completed.
+2025-07-02 20:19:13,580 - maternal_risk_model - INFO - train_model:132 - Creating an ensemble model with the best XGBoost and calibrated XGBoost.
+2025-07-02 20:19:26,560 - maternal_risk_model - INFO - train_model:138 - Ensemble model fitted.
+2025-07-02 20:19:26,560 - maternal_risk_model - INFO - train_model:141 - Evaluating model performance on the test set.
+2025-07-02 20:19:26,560 - maternal_risk_model - INFO - clinical_model_evaluation:132 - Starting clinical model evaluation
+2025-07-02 20:19:26,665 - maternal_risk_model - INFO - calculate_clinical_cost:62 - Calculated total clinical cost: 220
+2025-07-02 20:19:26,668 - maternal_risk_model - INFO - calculate_calibration_curve:95 - Calibration curve calculated for 'high risk' class.
+2025-07-02 20:19:26,668 - maternal_risk_model - INFO - clinical_model_evaluation:166 - Evaluation complete - Accuracy: 0.8459, F1: 0.8466, Cost: 220
+2025-07-02 20:19:26,668 - maternal_risk_model - INFO - train_model:145 - Final Model Performance - Accuracy: 0.8459, F1-weighted: 0.8466, Clinical Cost: 220
+2025-07-02 20:19:26,669 - maternal_risk_model - INFO - train_model:149 - Constructing and saving the production pipeline.
+2025-07-02 20:19:26,669 - maternal_risk_model - INFO - _setup_risk_indices:55 - Risk indices set: High=0, Mid=2, Low=1
+2025-07-02 20:19:27,593 - maternal_risk_model - INFO - save_model:75 - Model saved successfully to models\maternal_risk_pipeline.joblib
+2025-07-02 20:19:27,594 - maternal_risk_model - INFO - train_model:166 - Model metadata saved to models\model_metadata.json
+2025-07-02 20:19:27,594 - maternal_risk_model - INFO - train_model:168 - Training completed successfully!
+2025-07-02 20:19:27,596 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 20:19:27,656 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 20:19:27,656 - maternal_risk_model - INFO - <module>:194 - Example prediction after training: {'predicted_risk_level': 'high risk', 'probability': {'high risk': 0.9995718002319336, 'low risk': 9.505164780421183e-05, 'mid risk': 0.00033315535984002054}, 'alert': {'level': 'HIGH_ALERT', 'message': 'Immediate clinical evaluation recommended.', 'urgency': 'CRITICAL', 'risk_score': 0.9995718002319336, 'risk_category': 'high risk'}, 'confidence_score': 0.9995718002319336, 'timestamp': '2025-07-02T20:19:27.656023', 'model_version': '1.0.0'}
+2025-07-02 20:23:49,164 - maternal_risk_model - INFO - load_model:101 - Loading model from models\maternal_risk_pipeline.joblib
+2025-07-02 20:23:49,620 - maternal_risk_model - INFO - load_model:104 - Model version 1.0.0 loaded successfully
+2025-07-02 20:23:49,621 - maternal_risk_model - INFO - load_model:105 - Model created at: 2025-07-02T20:19:26.670718
+2025-07-02 20:23:49,621 - maternal_risk_model - INFO - make_prediction:34 - Model loaded successfully for prediction.
+2025-07-02 20:23:49,621 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 20:23:49,638 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 20:23:49,638 - maternal_risk_model - INFO - make_prediction:41 - Prediction made for input: {'Age': 35, 'SystolicBP': 120, 'DiastolicBP': 80, 'BS': 6.1, 'BodyTemp': 98.6, 'HeartRate': 70}
+2025-07-02 20:23:49,645 - maternal_risk_model - INFO - load_model:101 - Loading model from models\maternal_risk_pipeline.joblib
+2025-07-02 20:23:49,913 - maternal_risk_model - INFO - load_model:104 - Model version 1.0.0 loaded successfully
+2025-07-02 20:23:49,913 - maternal_risk_model - INFO - load_model:105 - Model created at: 2025-07-02T20:19:26.670718
+2025-07-02 20:23:49,913 - maternal_risk_model - INFO - make_prediction:34 - Model loaded successfully for prediction.
+2025-07-02 20:23:49,913 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 20:23:49,928 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 20:23:49,928 - maternal_risk_model - INFO - make_prediction:41 - Prediction made for input: {'Age': 45, 'SystolicBP': 160, 'DiastolicBP': 100, 'BS': 15.0, 'BodyTemp': 101.5, 'HeartRate': 110}
+2025-07-02 21:19:46,215 - maternal_risk_model - INFO - train_model:51 - Starting model training pipeline
+2025-07-02 21:19:46,216 - maternal_risk_model - INFO - load_data:29 - Loading data from data/Maternal Health Risk Data Set.csv
+2025-07-02 21:19:46,218 - maternal_risk_model - INFO - load_data:39 - Successfully loaded 1014 samples with 7 features
+2025-07-02 21:19:46,219 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 1 outliers in column 'Age' using IQR
+2025-07-02 21:19:46,219 - maternal_risk_model - WARNING - handle_outliers:102 - Detected 47 values outside clinical range for 'Age' after outlier handling
+2025-07-02 21:19:46,220 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 10 outliers in column 'SystolicBP' using IQR
+2025-07-02 21:19:46,222 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BS' using IQR
+2025-07-02 21:19:46,223 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BodyTemp' using IQR
+2025-07-02 21:19:46,224 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 2 outliers in column 'HeartRate' using IQR
+2025-07-02 21:19:46,224 - maternal_risk_model - INFO - handle_outliers:105 - Total IQR outliers handled: 433
+2025-07-02 21:19:46,225 - maternal_risk_model - INFO - train_model:63 - Target classes encoded: ['high risk' 'low risk' 'mid risk']
+2025-07-02 21:19:46,226 - maternal_risk_model - INFO - train_model:71 - Data split - Train samples: 709, Test samples: 305
+2025-07-02 21:19:46,227 - maternal_risk_model - INFO - fit:33 - Fitting feature engineer
+2025-07-02 21:19:46,232 - maternal_risk_model - INFO - train_model:86 - Feature engineering and scaling completed for train and test sets.
+2025-07-02 21:19:46,232 - maternal_risk_model - INFO - train_model:89 - Starting hyperparameter tuning for XGBoost classifier.
+2025-07-02 21:19:53,269 - maternal_risk_model - INFO - train_model:120 - Best parameters found: {'classifier__learning_rate': 0.1, 'classifier__max_depth': 4, 'classifier__n_estimators': 300, 'classifier__subsample': 0.8}
+2025-07-02 21:19:53,269 - maternal_risk_model - INFO - train_model:121 - Best balanced accuracy score: 0.8164
+2025-07-02 21:19:53,269 - maternal_risk_model - INFO - train_model:124 - Calibrating the best model using Isotonic regression.
+2025-07-02 21:19:55,173 - maternal_risk_model - INFO - train_model:129 - Model calibration completed.
+2025-07-02 21:19:55,173 - maternal_risk_model - INFO - train_model:132 - Creating an ensemble model with the best XGBoost and calibrated XGBoost.
+2025-07-02 21:19:57,265 - maternal_risk_model - INFO - train_model:138 - Ensemble model fitted.
+2025-07-02 21:19:57,265 - maternal_risk_model - INFO - train_model:141 - Evaluating model performance on the test set.
+2025-07-02 21:19:57,265 - maternal_risk_model - INFO - clinical_model_evaluation:132 - Starting clinical model evaluation
+2025-07-02 21:19:57,296 - maternal_risk_model - INFO - calculate_clinical_cost:62 - Calculated total clinical cost: 220
+2025-07-02 21:19:57,296 - maternal_risk_model - INFO - calculate_calibration_curve:95 - Calibration curve calculated for 'high risk' class.
+2025-07-02 21:19:57,297 - maternal_risk_model - INFO - clinical_model_evaluation:166 - Evaluation complete - Accuracy: 0.8459, F1: 0.8466, Cost: 220
+2025-07-02 21:19:57,297 - maternal_risk_model - INFO - train_model:145 - Final Model Performance - Accuracy: 0.8459, F1-weighted: 0.8466, Clinical Cost: 220
+2025-07-02 21:19:57,297 - maternal_risk_model - INFO - train_model:149 - Constructing and saving the production pipeline.
+2025-07-02 21:19:57,297 - maternal_risk_model - INFO - _setup_risk_indices:55 - Risk indices set: High=0, Mid=2, Low=1
+2025-07-02 21:19:57,651 - maternal_risk_model - INFO - save_model:75 - Model saved successfully to models\maternal_risk_pipeline.joblib
+2025-07-02 21:19:57,651 - maternal_risk_model - INFO - train_model:166 - Model metadata saved to models\model_metadata.json
+2025-07-02 21:19:57,651 - maternal_risk_model - INFO - train_model:168 - Training completed successfully!
+2025-07-02 21:19:57,652 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 21:19:57,667 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 21:19:57,667 - maternal_risk_model - INFO - <module>:194 - Example prediction after training: {'predicted_risk_level': 'high risk', 'probability': {'high risk': 0.9995718002319336, 'low risk': 9.505164780421183e-05, 'mid risk': 0.00033315535984002054}, 'alert': {'level': 'HIGH_ALERT', 'message': 'Immediate clinical evaluation recommended.', 'urgency': 'CRITICAL', 'risk_score': 0.9995718002319336, 'risk_category': 'high risk'}, 'confidence_score': 0.9995718002319336, 'timestamp': '2025-07-02T21:19:57.667393', 'model_version': '1.0.0'}
+2025-07-02 21:20:49,483 - maternal_risk_model - INFO - load_model:101 - Loading model from models\maternal_risk_pipeline.joblib
+2025-07-02 21:20:49,952 - maternal_risk_model - INFO - load_model:104 - Model version 1.0.0 loaded successfully
+2025-07-02 21:20:49,952 - maternal_risk_model - INFO - load_model:105 - Model created at: 2025-07-02T21:19:57.297580
+2025-07-02 21:20:49,952 - maternal_risk_model - INFO - make_prediction:34 - Model loaded successfully for prediction.
+2025-07-02 21:20:49,953 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 21:20:49,969 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 21:20:49,969 - maternal_risk_model - INFO - make_prediction:41 - Prediction made for input: {'Age': 35, 'SystolicBP': 120, 'DiastolicBP': 80, 'BS': 6.1, 'BodyTemp': 98.6, 'HeartRate': 70}
+2025-07-02 21:20:49,976 - maternal_risk_model - INFO - load_model:101 - Loading model from models\maternal_risk_pipeline.joblib
+2025-07-02 21:20:50,246 - maternal_risk_model - INFO - load_model:104 - Model version 1.0.0 loaded successfully
+2025-07-02 21:20:50,246 - maternal_risk_model - INFO - load_model:105 - Model created at: 2025-07-02T21:19:57.297580
+2025-07-02 21:20:50,246 - maternal_risk_model - INFO - make_prediction:34 - Model loaded successfully for prediction.
+2025-07-02 21:20:50,246 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 21:20:50,262 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 21:20:50,262 - maternal_risk_model - INFO - make_prediction:41 - Prediction made for input: {'Age': 45, 'SystolicBP': 160, 'DiastolicBP': 100, 'BS': 15.0, 'BodyTemp': 101.5, 'HeartRate': 110}
+2025-07-02 21:22:22,702 - maternal_risk_model - INFO - train_model:51 - Starting model training pipeline
+2025-07-02 21:22:22,702 - maternal_risk_model - INFO - load_data:29 - Loading data from data/Maternal Health Risk Data Set.csv
+2025-07-02 21:22:22,705 - maternal_risk_model - INFO - load_data:39 - Successfully loaded 1014 samples with 7 features
+2025-07-02 21:22:22,706 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 1 outliers in column 'Age' using IQR
+2025-07-02 21:22:22,707 - maternal_risk_model - WARNING - handle_outliers:102 - Detected 47 values outside clinical range for 'Age' after outlier handling
+2025-07-02 21:22:22,708 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 10 outliers in column 'SystolicBP' using IQR
+2025-07-02 21:22:22,710 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BS' using IQR
+2025-07-02 21:22:22,711 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BodyTemp' using IQR
+2025-07-02 21:22:22,713 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 2 outliers in column 'HeartRate' using IQR
+2025-07-02 21:22:22,713 - maternal_risk_model - INFO - handle_outliers:105 - Total IQR outliers handled: 433
+2025-07-02 21:22:22,737 - maternal_risk_model - INFO - train_model:63 - Target classes encoded: ['high risk' 'low risk' 'mid risk']
+2025-07-02 21:22:22,739 - maternal_risk_model - INFO - train_model:71 - Data split - Train samples: 709, Test samples: 305
+2025-07-02 21:22:22,739 - maternal_risk_model - INFO - fit:33 - Fitting feature engineer
+2025-07-02 21:22:22,747 - maternal_risk_model - INFO - train_model:86 - Feature engineering and scaling completed for train and test sets.
+2025-07-02 21:22:22,748 - maternal_risk_model - INFO - train_model:89 - Starting hyperparameter tuning for XGBoost classifier.
+2025-07-02 21:22:31,495 - maternal_risk_model - INFO - train_model:120 - Best parameters found: {'classifier__learning_rate': 0.1, 'classifier__max_depth': 4, 'classifier__n_estimators': 300, 'classifier__subsample': 0.8}
+2025-07-02 21:22:31,495 - maternal_risk_model - INFO - train_model:121 - Best balanced accuracy score: 0.8164
+2025-07-02 21:22:31,495 - maternal_risk_model - INFO - train_model:124 - Calibrating the best model using Isotonic regression.
+2025-07-02 21:22:32,630 - maternal_risk_model - INFO - train_model:129 - Model calibration completed.
+2025-07-02 21:22:32,631 - maternal_risk_model - INFO - train_model:132 - Creating an ensemble model with the best XGBoost and calibrated XGBoost.
+2025-07-02 21:22:33,727 - maternal_risk_model - INFO - train_model:138 - Ensemble model fitted.
+2025-07-02 21:22:33,727 - maternal_risk_model - INFO - train_model:141 - Evaluating model performance on the test set.
+2025-07-02 21:22:33,727 - maternal_risk_model - INFO - clinical_model_evaluation:132 - Starting clinical model evaluation
+2025-07-02 21:22:33,757 - maternal_risk_model - INFO - calculate_clinical_cost:62 - Calculated total clinical cost: 220
+2025-07-02 21:22:33,758 - maternal_risk_model - INFO - calculate_calibration_curve:95 - Calibration curve calculated for 'high risk' class.
+2025-07-02 21:22:33,758 - maternal_risk_model - INFO - clinical_model_evaluation:166 - Evaluation complete - Accuracy: 0.8459, F1: 0.8466, Cost: 220
+2025-07-02 21:22:33,758 - maternal_risk_model - INFO - train_model:145 - Final Model Performance - Accuracy: 0.8459, F1-weighted: 0.8466, Clinical Cost: 220
+2025-07-02 21:22:33,758 - maternal_risk_model - INFO - train_model:149 - Constructing and saving the production pipeline.
+2025-07-02 21:22:33,758 - maternal_risk_model - INFO - _setup_risk_indices:55 - Risk indices set: High=0, Mid=2, Low=1
+2025-07-02 21:22:34,097 - maternal_risk_model - INFO - save_model:75 - Model saved successfully to models\maternal_risk_pipeline.joblib
+2025-07-02 21:22:34,098 - maternal_risk_model - INFO - train_model:166 - Model metadata saved to models\model_metadata.json
+2025-07-02 21:22:34,098 - maternal_risk_model - INFO - train_model:168 - Training completed successfully!
+2025-07-02 21:22:34,099 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 21:22:34,117 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 21:22:34,118 - maternal_risk_model - INFO - <module>:194 - Example prediction after training: {'predicted_risk_level': 'high risk', 'probability': {'high risk': 0.9995718002319336, 'low risk': 9.505164780421183e-05, 'mid risk': 0.00033315535984002054}, 'alert': {'level': 'HIGH_ALERT', 'message': 'Immediate clinical evaluation recommended.', 'urgency': 'CRITICAL', 'risk_score': 0.9995718002319336, 'risk_category': 'high risk'}, 'confidence_score': 0.9995718002319336, 'timestamp': '2025-07-02T21:22:34.117957', 'model_version': '1.0.0'}
+2025-07-02 21:27:46,762 - maternal_risk_model - INFO - train_model:51 - Starting model training pipeline
+2025-07-02 21:27:46,762 - maternal_risk_model - INFO - load_data:29 - Loading data from data/Maternal Health Risk Data Set.csv
+2025-07-02 21:27:46,764 - maternal_risk_model - INFO - load_data:39 - Successfully loaded 1014 samples with 7 features
+2025-07-02 21:27:46,766 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 1 outliers in column 'Age' using IQR
+2025-07-02 21:27:46,766 - maternal_risk_model - WARNING - handle_outliers:102 - Detected 47 values outside clinical range for 'Age' after outlier handling
+2025-07-02 21:27:46,767 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 10 outliers in column 'SystolicBP' using IQR
+2025-07-02 21:27:46,769 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BS' using IQR
+2025-07-02 21:27:46,770 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 210 outliers in column 'BodyTemp' using IQR
+2025-07-02 21:27:46,771 - maternal_risk_model - INFO - handle_outliers:87 - Clipped 2 outliers in column 'HeartRate' using IQR
+2025-07-02 21:27:46,771 - maternal_risk_model - INFO - handle_outliers:105 - Total IQR outliers handled: 433
+2025-07-02 21:27:46,772 - maternal_risk_model - INFO - train_model:63 - Target classes encoded: ['high risk' 'low risk' 'mid risk']
+2025-07-02 21:27:46,773 - maternal_risk_model - INFO - train_model:71 - Data split - Train samples: 709, Test samples: 305
+2025-07-02 21:27:46,773 - maternal_risk_model - INFO - fit:33 - Fitting feature engineer
+2025-07-02 21:27:46,777 - maternal_risk_model - INFO - train_model:86 - Feature engineering and scaling completed for train and test sets.
+2025-07-02 21:27:46,777 - maternal_risk_model - INFO - train_model:89 - Starting hyperparameter tuning for XGBoost classifier.
+2025-07-02 21:28:04,073 - maternal_risk_model - INFO - train_model:120 - Best parameters found: {'classifier__learning_rate': 0.1, 'classifier__max_depth': 4, 'classifier__n_estimators': 300, 'classifier__subsample': 0.8}
+2025-07-02 21:28:04,073 - maternal_risk_model - INFO - train_model:121 - Best balanced accuracy score: 0.8164
+2025-07-02 21:28:04,073 - maternal_risk_model - INFO - train_model:124 - Calibrating the best model using Isotonic regression.
+2025-07-02 21:28:14,809 - maternal_risk_model - INFO - train_model:129 - Model calibration completed.
+2025-07-02 21:28:14,810 - maternal_risk_model - INFO - train_model:132 - Creating an ensemble model with the best XGBoost and calibrated XGBoost.
+2025-07-02 21:28:27,041 - maternal_risk_model - INFO - train_model:138 - Ensemble model fitted.
+2025-07-02 21:28:27,041 - maternal_risk_model - INFO - train_model:141 - Evaluating model performance on the test set.
+2025-07-02 21:28:27,041 - maternal_risk_model - INFO - clinical_model_evaluation:132 - Starting clinical model evaluation
+2025-07-02 21:28:27,154 - maternal_risk_model - INFO - calculate_clinical_cost:62 - Calculated total clinical cost: 220
+2025-07-02 21:28:27,157 - maternal_risk_model - INFO - calculate_calibration_curve:95 - Calibration curve calculated for 'high risk' class.
+2025-07-02 21:28:27,157 - maternal_risk_model - INFO - clinical_model_evaluation:166 - Evaluation complete - Accuracy: 0.8459, F1: 0.8466, Cost: 220
+2025-07-02 21:28:27,157 - maternal_risk_model - INFO - train_model:145 - Final Model Performance - Accuracy: 0.8459, F1-weighted: 0.8466, Clinical Cost: 220
+2025-07-02 21:28:27,157 - maternal_risk_model - INFO - train_model:149 - Constructing and saving the production pipeline.
+2025-07-02 21:28:27,158 - maternal_risk_model - INFO - _setup_risk_indices:55 - Risk indices set: High=0, Mid=2, Low=1
+2025-07-02 21:28:28,185 - maternal_risk_model - INFO - save_model:75 - Model saved successfully to models\maternal_risk_pipeline.joblib
+2025-07-02 21:28:28,188 - maternal_risk_model - INFO - train_model:166 - Model metadata saved to models\model_metadata.json
+2025-07-02 21:28:28,188 - maternal_risk_model - INFO - train_model:168 - Training completed successfully!
+2025-07-02 21:28:28,192 - maternal_risk_model - INFO - predict:242 - Received 1 samples for prediction
+2025-07-02 21:28:28,245 - maternal_risk_model - INFO - predict:307 - Predictions completed successfully for 1 samples
+2025-07-02 21:28:28,245 - maternal_risk_model - INFO - <module>:194 - Example prediction after training: {'predicted_risk_level': 'high risk', 'probability': {'high risk': 0.9995718002319336, 'low risk': 9.505164780421183e-05, 'mid risk': 0.00033315535984002054}, 'alert': {'level': 'HIGH_ALERT', 'message': 'Immediate clinical evaluation recommended.', 'urgency': 'CRITICAL', 'risk_score': 0.9995718002319336, 'risk_category': 'high risk'}, 'confidence_score': 0.9995718002319336, 'timestamp': '2025-07-02T21:28:28.245098', 'model_version': '1.0.0'}
