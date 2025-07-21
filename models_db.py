@@ -1,9 +1,8 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, Enum, ForeignKey, Text
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
-
-Base = declarative_base()
+from database import Base  # Use the shared Base
 
 class UserRoleEnum(str, enum.Enum):
     PREGNANT_MOTHER = "pregnant_mother"
@@ -50,9 +49,10 @@ class PregnantMother(Base):
     gestational_age = Column(Integer)
     previous_pregnancies = Column(Integer, default=0)
     previous_complications = Column(Text)  # Store as comma-separated string
-    emergency_contact = Column(String, nullable=False)
+    emergency_contact = Column(Integer, nullable=False)
     assigned_chv_id = Column(String, ForeignKey("users.id"))
     assigned_clinician_id = Column(String, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     user = relationship("User", back_populates="mothers", foreign_keys=[user_id])
     assigned_chv = relationship("User", back_populates="chv_mothers", foreign_keys=[assigned_chv_id])
     assigned_clinician = relationship("User", back_populates="clinician_mothers", foreign_keys=[assigned_clinician_id])
@@ -64,7 +64,7 @@ class RiskAssessment(Base):
     __tablename__ = "risk_assessments"
     id = Column(String, primary_key=True, index=True)
     mother_id = Column(String, ForeignKey("pregnant_mothers.id"), nullable=False)
-    chv_id = Column(String, ForeignKey("users.id"), nullable=False)
+    chv_id = Column(String, ForeignKey("users.id"), nullable=True)  # Allow null for clinician assessments
     assessment_date = Column(DateTime, default=datetime.now(timezone.utc))
     age = Column(Float, nullable=False)
     systolic_bp = Column(Float, nullable=False)
@@ -89,8 +89,8 @@ class Appointment(Base):
     __tablename__ = "appointments"
     id = Column(String, primary_key=True, index=True)
     mother_id = Column(String, ForeignKey("pregnant_mothers.id"), nullable=False)
-    clinician_id = Column(String, ForeignKey("users.id"), nullable=False)
-    chv_id = Column(String, ForeignKey("users.id"))
+    clinician_id = Column(String, ForeignKey("users.id"), nullable=True)  # Allow null for CHV appointments
+    chv_id = Column(String, ForeignKey("users.id"), nullable=True)  # Allow null for clinician appointments
     appointment_date = Column(DateTime, nullable=False)
     status = Column(Enum(AppointmentStatusEnum), default=AppointmentStatusEnum.SCHEDULED)
     reason = Column(String, nullable=False)

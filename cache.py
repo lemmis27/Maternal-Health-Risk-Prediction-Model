@@ -9,15 +9,25 @@ from datetime import timedelta
 import redis
 from fastapi import HTTPException
 
-# Redis connection
+# Redis connection with fallback
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+
+try:
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    # Test the connection
+    redis_client.ping()
+    redis_available = True
+except Exception as e:
+    print(f"Redis not available: {e}")
+    redis_client = None
+    redis_available = False
 
 class CacheManager:
     """Manages caching operations for the application."""
     
     def __init__(self):
         self.redis_client = redis_client
+        self.redis_available = redis_available
         self.default_ttl = 3600  # 1 hour default
     
     def _generate_cache_key(self, prefix: str, data: Dict[str, Any]) -> str:
@@ -29,6 +39,8 @@ class CacheManager:
     
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache."""
+        if not self.redis_available or not self.redis_client:
+            return None
         try:
             value = self.redis_client.get(key)
             return json.loads(value) if value else None
@@ -38,6 +50,8 @@ class CacheManager:
     
     def set(self, key: str, value: Any, ttl: int = None) -> bool:
         """Set value in cache with optional TTL."""
+        if not self.redis_available or not self.redis_client:
+            return False
         try:
             ttl = ttl or self.default_ttl
             return self.redis_client.setex(key, ttl, json.dumps(value))
@@ -47,6 +61,8 @@ class CacheManager:
     
     def delete(self, key: str) -> bool:
         """Delete value from cache."""
+        if not self.redis_available or not self.redis_client:
+            return False
         try:
             return bool(self.redis_client.delete(key))
         except Exception as e:
@@ -88,6 +104,8 @@ class CacheManager:
     
     def invalidate_user_cache(self, user_id: str):
         """Invalidate all cache entries for a user."""
+        if not self.redis_available or not self.redis_client:
+            return
         try:
             pattern = f"user_session:{user_id}"
             keys = self.redis_client.keys(pattern)
@@ -98,11 +116,7 @@ class CacheManager:
     
     def health_check(self) -> bool:
         """Check if Redis is available."""
-        try:
-            self.redis_client.ping()
-            return True
-        except Exception:
-            return False
+        return self.redis_available
 
 # Global cache manager instance
 cache_manager = CacheManager()

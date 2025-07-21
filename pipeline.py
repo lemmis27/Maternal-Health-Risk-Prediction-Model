@@ -244,7 +244,7 @@ class MaternalRiskPipeline:
                 if out_of_range:
                     self.logger.warning(f"Values outside clinical range detected for '{col}' in input data. Expected range: [{min_val}, {max_val}]")
 
-    def predict(self, X: Union[pd.DataFrame, Dict[str, Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    def predict(self, X: Union[pd.DataFrame, Dict[str, Any], List[Dict[str, Any]]], suppress_log: bool = False) -> List[Dict[str, Any]]:
         """
         Makes predictions for maternal risk levels with comprehensive validation and logging.
 
@@ -252,12 +252,14 @@ class MaternalRiskPipeline:
             X (Union[pd.DataFrame, Dict[str, Any], List[Dict[str, Any]]]):
                 Input data for prediction. Can be a pandas DataFrame, a single dictionary,
                 or a list of dictionaries.
+            suppress_log (bool): If True, suppresses the info log for batch size. Default is False.
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries, each containing prediction details
                                    for a single input sample.
         """
-        self.logger.info(f"Received {len(X) if isinstance(X, (pd.DataFrame, list)) else 1} samples for prediction")
+        if not suppress_log:
+            self.logger.info(f"Received {len(X) if isinstance(X, (pd.DataFrame, list)) else 1} samples for prediction")
 
         # Ensure input is a DataFrame
         if isinstance(X, dict):

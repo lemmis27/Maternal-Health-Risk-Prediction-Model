@@ -57,3 +57,4 @@ test_*.py
 # Temporary files
 *.tmp
 *.temp
+node_modules

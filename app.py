@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -8,7 +8,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any, ClassVar
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from enum import Enum
 import pandas as pd
 import numpy as np
@@ -26,7 +26,7 @@ from models_db import PregnantMother as DBMother
 from models_db import RiskAssessment as DBRiskAssessment
 from models_db import Appointment as DBAppointment
 from models_db import Medication as DBMedication
-from schemas import UserOut, PregnantMotherOut, RiskAssessmentOut, AppointmentOut, MedicationOut, ErrorResponse, UserIn, PregnantMotherIn, RiskAssessmentIn, AppointmentIn, MedicationIn
+from schemas import UserOut, PregnantMotherOut, RiskAssessmentOut, AppointmentOut, MedicationOut, ErrorResponse, UserIn, PregnantMotherIn, RiskAssessmentIn, AppointmentIn, MedicationIn, MotherRegistrationIn
 from fastapi.responses import JSONResponse
 from config import SECRET_KEY
 from pipeline import MaternalRiskPipeline  # Ensure this is imported before model loading
@@ -37,6 +37,19 @@ from cache import get_cache_manager
 from background_tasks import get_background_task_manager
 from performance import get_performance_monitor
 from shap_utils import get_shap_explainer
+from fastapi import APIRouter
+from pydantic import EmailStr
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("maternal_health_backend.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -121,11 +134,13 @@ For more, see the [SHAP documentation](https://shap.readthedocs.io/en/latest/).
 app.state.limiter = limiter
 
 # Create all tables
+print(">>> Creating all tables...")
 Base.metadata.create_all(bind=engine)
+print(">>> Tables created (if not already present).")
 
 # CORS middleware - Production-ready configuration
 # Get allowed origins from environment variable, fallback to development defaults
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://127.0.0.1:8000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -134,6 +149,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     max_age=3600,  # Cache preflight requests for 1 hour
+    expose_headers=["*"]
 )
 
 # Security headers middleware
@@ -151,6 +167,11 @@ async def add_security_headers(request, call_next):
 @app.middleware("http")
 async def validate_input(request, call_next):
     """Validate and sanitize input data"""
+    # Skip validation for OPTIONS requests (CORS preflight)
+    if request.method == "OPTIONS":
+        response = await call_next(request)
+        return response
+    
     import re
     
     # Check for suspicious patterns in query parameters
@@ -329,15 +350,17 @@ def load_model_once():
     try:
         if os.path.exists(model_path):
             model = joblib.load(model_path)
-            print("✅ Model loaded successfully!")
+            # print("✅ Model loaded successfully!")
             if hasattr(model, 'model'):
+                pass
             if hasattr(model, 'label_encoder') and hasattr(model.label_encoder, 'classes_'):
+                pass
         else:
-            print("❌ Model file not found at models/maternal_risk_pipeline.joblib")
+            # print("❌ Model file not found at models/maternal_risk_pipeline.joblib")
             model = None
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        # traceback.print_exc()
         model = None
     return model
 
@@ -355,49 +378,56 @@ class MaternalHealthModel:
             'high risk': RiskLevel.HIGH
         }
     
-    def predict_risk(self, features: Dict[str, float]) -> tuple:
-        """Predict risk level using your trained model"""
+    def predict_risk(self, features: Dict[str, float]) -> dict:
+        # print(f"[DEBUG] predict_risk called with features type: {type(features)}")
+        if isinstance(features, dict):
+            # print(f"[DEBUG] Single sample keys: {list(features.keys())}")
+            pass
+        elif isinstance(features, pd.DataFrame):
+            # print(f"[DEBUG] DataFrame shape: {features.shape}")
+            pass
+        else:
+            # print(f"[DEBUG] Features: {features}")
+            pass
         if self.model is None:
-            # Fallback to dummy prediction if model not loaded
-            return RiskLevel.LOW, 0.5
-        
+            return {
+                'risk_level': RiskLevel.LOW,
+                'confidence': 0.5,
+                'probabilities': {}
+            }
         try:
-            # Prepare input data with correct column names for your model
-            input_data = pd.DataFrame([{
+            # Build features dict with capitalized keys as expected by the pipeline
+            features_for_model = {
                 'Age': features.get('age', 25),
                 'SystolicBP': features.get('systolic_bp', 120),
                 'DiastolicBP': features.get('diastolic_bp', 80),
                 'BS': features.get('blood_sugar', 8.0),
                 'BodyTemp': features.get('body_temp', 98.6),
                 'HeartRate': features.get('heart_rate', 72)
-            }])
-            
-            # Make prediction
-            prediction = self.model.predict(input_data)
-            
-            # Get probabilities
-            confidence = 0.5
-            try:
-                proba = self.model.predict_proba(input_data)
-                if proba is not None:
-                    confidence = float(np.max(proba[0]))
-            except:
-                pass
-            
-            # Process prediction result
-            if isinstance(prediction, np.ndarray):
-                pred_value = prediction[0]
-            else:
-                pred_value = prediction
-            
-            # Convert prediction to risk level
-            prediction_str = str(pred_value).lower()
+            }
+            # print(f"[DEBUG] features_for_model: {features_for_model}")
+            results = self.model.predict([features_for_model])
+            if not results or not isinstance(results, list):
+                raise ValueError("Model prediction did not return a list of results.")
+            result = results[0]
+            prediction_str = str(result.get('predicted_risk_level', 'low risk')).lower()
             risk_level = self.risk_mapping.get(prediction_str, RiskLevel.LOW)
-            
-            return risk_level, confidence
-            
+            confidence = float(result.get('confidence_score', 0.5))
+            prob_dict = result.get('probability', {})
+            return {
+                'risk_level': risk_level,
+                'confidence': confidence,
+                'probabilities': prob_dict
+            }
         except Exception as e:
-            return RiskLevel.LOW, 0.5
+            import traceback
+            # print(f"[ERROR] Exception in predict_risk: {e}")
+            # traceback.print_exc()
+            return {
+                'risk_level': RiskLevel.LOW,
+                'confidence': 0.5,
+                'probabilities': {}
+            }
     
     def get_recommendations(self, risk_level: RiskLevel, features: Dict[str, float]) -> List[str]:
         """Generate recommendations based on risk level and features"""
@@ -470,6 +500,8 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create JWT access token with improved security"""
+    if not SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Server configuration error")
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -482,6 +514,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def create_refresh_token(data: dict):
     """Create refresh token for session management"""
+    if not SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Server configuration error")
     to_encode = data.copy()
     # Refresh tokens last longer but are used only for getting new access tokens
     expire = datetime.now(timezone.utc) + timedelta(days=7)
@@ -491,6 +525,8 @@ def create_refresh_token(data: dict):
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify JWT token with improved error handling"""
+    if not SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Server configuration error")
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -511,9 +547,12 @@ def get_db():
         db.close()
 
 def get_current_user(username: str = Depends(verify_token), db: Session = Depends(get_db)) -> DBUser:
+    logger.info(f"Getting current user for username: {username}")
     user = db.query(DBUser).filter(DBUser.username == username).first()
     if user is None:
+        logger.error(f"User not found for username: {username}")
         raise HTTPException(status_code=404, detail="User not found")
+    logger.info(f"Found user: {user.id} with role: {user.role}")
     return user
 
 # Advanced Authorization Functions
@@ -557,6 +596,11 @@ def require_any_role(allowed_roles: List[UserRole]):
 
 # API Routes
 
+@app.options("/auth/register")
+async def options_register():
+    """Handle CORS preflight for registration"""
+    return {"message": "OK"}
+
 @app.post("/auth/register")
 @limiter.limit("3/minute")
 async def register_user(request: Request, user: UserIn, db: Session = Depends(get_db)):
@@ -593,11 +637,40 @@ async def register_user(request: Request, user: UserIn, db: Session = Depends(ge
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return {"message": "User registered successfully", "user_id": db_user.id}
+    
+    # If user is a pregnant mother, automatically create mother record
+    mother_id = None
+    if user.role == UserRole.PREGNANT_MOTHER:
+        # Check if mother_id is provided in the request
+        mother_id = getattr(user, 'mother_id', None)
+        if not mother_id:
+            # Generate a unique mother ID if not provided
+            mother_id = f"M{db_user.id[:8].upper()}"
+        
+        # Create mother record with basic info (can be updated later)
+        db_mother = DBMother(
+            id=mother_id,
+            user_id=db_user.id,
+            age=25,  # Default age, should be updated
+            gestational_age=None,
+            previous_pregnancies=0,
+            previous_complications='',
+            emergency_contact=encrypted_phone,  # Use phone as emergency contact initially
+            assigned_chv_id=None,
+            assigned_clinician_id=None
+        )
+        db.add(db_mother)
+        db.commit()
+    
+    return {
+        "message": "User registered successfully", 
+        "user_id": db_user.id,
+        "mother_id": mother_id
+    }
 
 @app.post("/auth/login")
 @limiter.limit("5/minute")
-async def login(request: Request, username: str, password: str, db: Session = Depends(get_db)):
+async def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     """Login and get access token"""
     user = db.query(DBUser).filter(DBUser.username == username).first()
     if not user or not verify_password(password, str(user.hashed_password)):
@@ -608,11 +681,28 @@ async def login(request: Request, username: str, password: str, db: Session = De
     
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = create_refresh_token(data={"sub": user.username})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    
+    # Return user data along with tokens
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "phone_number": decrypt_sensitive_data(user.phone_number),
+            "location": user.location,
+            "created_at": user.created_at,
+            "is_active": user.is_active
+        }
+    }
 
 @app.post("/auth/refresh")
 @limiter.limit("10/minute")
-async def refresh_token(request: Request, refresh_token: str, db: Session = Depends(get_db)):
+async def refresh_token(request: Request, refresh_token: str = Form(...), db: Session = Depends(get_db)):
     """Refresh access token using refresh token"""
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -639,66 +729,90 @@ async def refresh_token(request: Request, refresh_token: str, db: Session = Depe
 @app.get("/users/me", response_model=UserOut, responses={404: {"model": ErrorResponse}})
 async def get_current_user_info(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current user information"""
-    # Decrypt sensitive data before returning
-    decrypted_phone = decrypt_sensitive_data(current_user.phone_number)
-    
-    # Create response with decrypted data
-    user_response = {
-        "id": current_user.id,
-        "username": current_user.username,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "role": current_user.role,
-        "phone_number": decrypted_phone,
-        "location": current_user.location,
-        "created_at": current_user.created_at,
-        "is_active": current_user.is_active
-    }
-    return user_response
+    try:
+        # Decrypt phone number before returning
+        if hasattr(current_user, 'phone_number'):
+            try:
+                current_user.phone_number = decrypt_sensitive_data(current_user.phone_number)
+            except Exception as e:
+                current_user.phone_number = ''  # fallback to empty if decryption fails
+        
+        return UserOut.model_validate(current_user)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="User not found")
 
-@app.post("/mothers/register", response_model=dict, responses={403: {"model": ErrorResponse}, 400: {"model": ErrorResponse}})
-async def register_mother(mother: PregnantMotherIn, current_user: User = require_any_role([UserRole.CHV, UserRole.CLINICIAN]), db: Session = Depends(get_db)):
-    """Register a new pregnant mother"""
-    # Encrypt sensitive data
-    encrypted_emergency_contact = encrypt_sensitive_data(mother.emergency_contact)
-    
-    db_mother = DBMother(
-        id=str(uuid.uuid4()),
-        user_id=mother.user_id,
-        age=mother.age,
-        gestational_age=mother.gestational_age,
-        previous_pregnancies=mother.previous_pregnancies,
-        previous_complications=','.join(mother.previous_complications) if mother.previous_complications else '',
-        emergency_contact=encrypted_emergency_contact,
-        assigned_chv_id=mother.assigned_chv_id,
-        assigned_clinician_id=mother.assigned_clinician_id
-    )
-    db.add(db_mother)
-    db.commit()
-    db.refresh(db_mother)
-    return {"message": "Mother registered successfully", "mother_id": db_mother.id}
+
 
 @app.get("/mothers/", response_model=List[PregnantMotherOut])
 async def list_mothers(skip: int = 0, limit: int = 10, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List all mothers with pagination and eager load user and assessments, with caching."""
-    cache_manager = get_cache_manager()
-    cache_key = f"mothers:{current_user.id}:{skip}:{limit}"
-    cached = cache_manager.get(cache_key)
-    if cached:
-        return cached
-    mothers = db.query(DBMother).options(
-        joinedload(DBMother.user),
-        joinedload(DBMother.assessments)
-    ).offset(skip).limit(limit).all()
-    # Convert SQLAlchemy objects to dicts for caching
-    mothers_out = [PregnantMotherOut.model_validate(mother.__dict__) for mother in mothers]
-    cache_manager.set(cache_key, mothers_out, ttl=120)  # Cache for 2 minutes
-    return mothers_out
+    try:
+        cache_manager = get_cache_manager()
+        cache_key = f"mothers:{current_user.id}:{skip}:{limit}"
+        cached = cache_manager.get(cache_key)
+        if cached:
+            return cached
+        
+        mothers = db.query(DBMother).options(
+            joinedload(DBMother.user),
+            joinedload(DBMother.assessments)
+        ).offset(skip).limit(limit).all()
+        
+        mothers_out = []
+        for mother in mothers:
+            # Defensive: skip if required fields are missing or invalid
+            age = getattr(mother, 'age', None)
+            previous_pregnancies = getattr(mother, 'previous_pregnancies', None)
+            if age is None or previous_pregnancies is None:
+                logger.error(f"Skipping mother {getattr(mother, 'id', 'unknown')} due to missing required fields: age={age}, previous_pregnancies={previous_pregnancies}")
+                continue
+            # Decrypt phone number before passing to UserOut
+            user_obj = mother.user
+            if user_obj and hasattr(user_obj, 'phone_number'):
+                phone_value = getattr(user_obj, 'phone_number', None)
+                try:
+                    if isinstance(phone_value, str):
+                        user_obj.phone_number = decrypt_sensitive_data(phone_value)
+                    else:
+                        user_obj.phone_number = ''
+                except Exception as e:
+                    user_obj.phone_number = ''  # fallback to empty if decryption fails
+            # Decrypt emergency_contact before validation
+            emergency_contact_raw = getattr(mother, 'emergency_contact', None)
+            try:
+                if emergency_contact_raw is not None:
+                    emergency_contact = int(emergency_contact_raw)
+                else:
+                    emergency_contact = None
+            except Exception as e:
+                emergency_contact = None  # fallback to None if conversion fails
+            # Create PregnantMotherOut with proper validation, using actual values not columns
+            mother_out = PregnantMotherOut(
+                id=str(getattr(mother, 'id', '')),
+                user_id=str(getattr(mother, 'user_id', '')),
+                age=int(age),
+                gestational_age=int(getattr(mother, 'gestational_age', 0)) if getattr(mother, 'gestational_age', None) is not None else None,
+                previous_pregnancies=int(previous_pregnancies),
+                previous_complications=str(getattr(mother, 'previous_complications', '')) if getattr(mother, 'previous_complications', None) is not None else None,
+                emergency_contact=emergency_contact,
+                assigned_chv_id=str(getattr(mother, 'assigned_chv_id', '')) if getattr(mother, 'assigned_chv_id', None) is not None else None,
+                assigned_clinician_id=str(getattr(mother, 'assigned_clinician_id', '')) if getattr(mother, 'assigned_clinician_id', None) is not None else None,
+                address=getattr(mother.user, 'location', None) if mother.user else None,
+                created_at=getattr(mother, 'created_at', None)
+            )
+            mothers_out.append(mother_out)
+        
+        cache_manager.set(cache_key, mothers_out, ttl=120)  # Cache for 2 minutes
+        return mothers_out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error in /mothers/: {str(e)}")
 
 @app.post("/assessments/create", response_model=dict)
 @limiter.limit("10/minute")
 async def create_assessment(request: Request, assessment: RiskAssessmentIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Create a new risk assessment with enhanced SHAP explanations"""
+    # print("ENTERED /assessments/create endpoint")
+    if current_user.role not in [UserRole.CHV, UserRole.CLINICIAN]:
+        raise HTTPException(status_code=403, detail="Only CHVs and Clinicians can create assessments")
     try:
         # Prepare features for model prediction
         features = {
@@ -709,35 +823,53 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
             'body_temp': assessment.body_temp,
             'heart_rate': assessment.heart_rate
         }
-        
+        # Prepare features for SHAP with correct names
+        features_for_shap = {
+            'Age': assessment.age,
+            'SystolicBP': assessment.systolic_bp,
+            'DiastolicBP': assessment.diastolic_bp,
+            'BS': assessment.blood_sugar,
+            'BodyTemp': assessment.body_temp,
+            'HeartRate': assessment.heart_rate
+        }
         # Get prediction with SHAP explanation
-        risk_level, confidence = ml_model.predict_risk(features)
-        
+        prediction_result = ml_model.predict_risk(features)
+        risk_level = prediction_result['risk_level']
+        confidence = prediction_result['confidence']
+        probabilities = prediction_result.get('probabilities', {})
         # Get SHAP explanation
         shap_explainer = get_shap_explainer()
         shap_explanation = []
         shap_summary = {}
-        
         if shap_explainer and shap_explainer.explainer is not None:
             try:
-                # Get detailed SHAP explanation
-                shap_explanation = shap_explainer.get_individual_explanation(features)
-                shap_summary = shap_explainer.get_explanation_summary(features)
+                shap_explanation = shap_explainer.get_individual_explanation(features_for_shap)
+                shap_summary = shap_explainer.get_explanation_summary(features_for_shap)
             except Exception as e:
                 shap_explanation = []
                 shap_summary = {"error": "Could not generate SHAP explanation"}
-        
         # Calculate BMI
         bmi = assessment.weight / ((assessment.height / 100) ** 2)
-        
         # Get recommendations
         recommendations = ml_model.get_recommendations(risk_level, features)
-        
+        # Determine chv_id based on user role and assessment data
+        chv_id = assessment.chv_id if assessment.chv_id else (current_user.id if current_user.role == UserRole.CHV else None)
+        # If chv_id is still None, try to get it from the mother record
+        if not chv_id:
+            mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+            if mother and mother.assigned_chv_id:
+                chv_id = mother.assigned_chv_id
+            else:
+                raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+        # Handle symptoms - convert array to string if needed
+        symptoms_str = assessment.symptoms
+        if isinstance(symptoms_str, list):
+            symptoms_str = ', '.join(symptoms_str)
         # Create database record
         db_assessment = DBRiskAssessment(
             id=str(uuid.uuid4()),
             mother_id=assessment.mother_id,
-            chv_id=current_user.id,
+            chv_id=chv_id,
             assessment_date=datetime.now(),
             age=assessment.age,
             systolic_bp=assessment.systolic_bp,
@@ -749,29 +881,31 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
             weight=assessment.weight,
             height=assessment.height,
             bmi=bmi,
-            risk_level=risk_level.value,
+            risk_level=risk_level.value if hasattr(risk_level, 'value') else str(risk_level),
             risk_score=confidence,
-            symptoms=assessment.symptoms,
+            symptoms=symptoms_str,
             notes=assessment.notes
         )
-        
         db.add(db_assessment)
         db.commit()
         db.refresh(db_assessment)
-        
         # Log the assessment
         log_audit(
-            user_id=current_user.id,
+            user=current_user.id,
+            role=str(current_user.role),
+            ip=request.client.host if request and request.client else "-",
+            endpoint="/assessments/create",
             action="create_assessment",
-            details=f"Assessment created for mother {assessment.mother_id} with risk level {risk_level.value}"
+            resource_id=assessment.mother_id
         )
-        
+        print(f"Returning prediction: risk_level={risk_level}, confidence={confidence}, probabilities={probabilities}")
         return {
             "success": True,
             "assessment_id": db_assessment.id,
             "prediction": {
-                "risk_level": risk_level.value,
+                "risk_level": risk_level.value if hasattr(risk_level, 'value') else str(risk_level),
                 "confidence": confidence,
+                "probabilities": probabilities,
                 "bmi": round(bmi, 2)
             },
             "recommendations": recommendations,
@@ -783,11 +917,13 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
             },
             "timestamp": datetime.now().isoformat()
         }
-        
     except Exception as e:
+        import traceback
         db.rollback()
+        logger.error("EXCEPTION in /assessments/create: %s", e)
+        logger.error(traceback.format_exc())
         log_audit(
-            user_id=current_user.id,
+            user_id=getattr(current_user, 'id', 'unknown'),
             action="create_assessment_failed",
             details=f"Failed to create assessment: {str(e)}"
         )
@@ -797,8 +933,8 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
 @limiter.limit("5/minute")
 async def create_bulk_assessments(request: Request, assessments: List[RiskAssessmentIn], current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Create multiple assessments with bulk processing and caching"""
-    if current_user.role != UserRole.CHV:
-        raise HTTPException(status_code=403, detail="Only CHVs can create assessments")
+    if current_user.role not in [UserRole.CHV, UserRole.CLINICIAN]:
+        raise HTTPException(status_code=403, detail="Only CHVs and Clinicians can create assessments")
     
     # Audit log
     ip = request.client.host if request and request.client else "-"
@@ -841,10 +977,25 @@ async def create_bulk_assessments(request: Request, assessments: List[RiskAssess
     saved_assessments = []
     for i, (assessment, result) in enumerate(zip(assessments, results)):
         if isinstance(result, dict) and "error" not in result:
+            # Determine chv_id based on user role and assessment data
+            chv_id = assessment.chv_id if assessment.chv_id else (current_user.id if current_user.role == UserRole.CHV else None)
+            # If chv_id is still None, try to get it from the mother record
+            if not chv_id:
+                mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+                if mother and mother.assigned_chv_id:
+                    chv_id = mother.assigned_chv_id
+                else:
+                    raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+            
+            # Handle symptoms - convert array to string if needed
+            symptoms_str = assessment.symptoms or ''
+            if isinstance(symptoms_str, list):
+                symptoms_str = ', '.join(symptoms_str)
+            
             db_assessment = DBRiskAssessment(
                 id=str(uuid.uuid4()),
                 mother_id=assessment.mother_id,
-                chv_id=assessment.chv_id,
+                chv_id=chv_id,
                 assessment_date=datetime.now(),
                 age=assessment.age,
                 systolic_bp=assessment.systolic_bp,
@@ -855,7 +1006,7 @@ async def create_bulk_assessments(request: Request, assessments: List[RiskAssess
                 gestational_age=assessment.gestational_age,
                 weight=assessment.weight,
                 height=assessment.height,
-                symptoms=assessment.symptoms or '',
+                symptoms=symptoms_str,
                 notes=assessment.notes,
                 bmi=bmi,
                 risk_level=result["risk_level"],
@@ -932,11 +1083,23 @@ async def create_appointment(appointment: AppointmentIn, current_user: User = De
     """Create a new appointment"""
     if current_user.role not in [UserRole.CHV, UserRole.CLINICIAN]:
         raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Handle CHV creating appointments (they may not have a clinician_id)
+    if current_user.role == UserRole.CHV:
+        # CHV can create appointments but need to assign a clinician
+        # For now, we'll allow empty clinician_id for CHV appointments
+        clinician_id = appointment.clinician_id if appointment.clinician_id else None
+        chv_id = current_user.id
+    else:
+        # Clinician creating appointment
+        clinician_id = current_user.id
+        chv_id = appointment.chv_id
+    
     db_appointment = DBAppointment(
         id=str(uuid.uuid4()),
         mother_id=appointment.mother_id,
-        clinician_id=appointment.clinician_id,
-        chv_id=appointment.chv_id,
+        clinician_id=clinician_id,
+        chv_id=chv_id,
         appointment_date=appointment.appointment_date,
         status=appointment.status,
         reason=appointment.reason,
@@ -1012,18 +1175,26 @@ async def get_clinician_dashboard(clinician_id: str, current_user: User = Depend
     cache_key = f"dashboard:clinician:{clinician_id}:{current_user.id}"
     cached = cache_manager.get(cache_key)
     if cached:
+        # print(f"[DASHBOARD] Returning cached dashboard for clinician {clinician_id}: {cached}")
+        logger.info(f"[DASHBOARD] Returning cached dashboard for clinician {clinician_id}: {cached}")
         return cached
     high_risk_cases = db.query(DBRiskAssessment).filter(DBRiskAssessment.risk_level == 'high').all()
+    # print(f"[DASHBOARD] High risk cases for clinician {clinician_id}: {high_risk_cases}")
+    logger.info(f"[DASHBOARD] High risk cases for clinician {clinician_id}: {high_risk_cases}")
     upcoming_appointments = db.query(DBAppointment).filter(
         DBAppointment.clinician_id == clinician_id,
         DBAppointment.status.in_(['scheduled', 'confirmed'])
     ).all()
+    # print(f"[DASHBOARD] Upcoming appointments for clinician {clinician_id}: {upcoming_appointments}")
+    logger.info(f"[DASHBOARD] Upcoming appointments for clinician {clinician_id}: {upcoming_appointments}")
     dashboard = {
         "high_risk_cases": len(high_risk_cases),
         "upcoming_appointments": len(upcoming_appointments),
         "high_risk_details": [a.__dict__ for a in high_risk_cases],
         "appointments": [a.__dict__ for a in upcoming_appointments]
     }
+    # print(f"[DASHBOARD] Dashboard dict for clinician {clinician_id}: {dashboard}")
+    logger.info(f"[DASHBOARD] Dashboard dict for clinician {clinician_id}: {dashboard}")
     cache_manager.set(cache_key, dashboard, ttl=120)
     return dashboard
 
@@ -1215,7 +1386,8 @@ async def get_cache_performance():
 
 @app.get("/shap/global")
 @limiter.limit("20/minute")
-async def get_global_feature_importance(request: Request, sample_size: int = 50):
+async def get_global_feature_importance(request: Request, sample_size: int = 20):
+    print(f"[LOG] /shap/global called with sample_size={sample_size}")
     """Get global feature importance using SHAP values with optimized performance"""
     import asyncio
     import concurrent.futures
@@ -1262,7 +1434,8 @@ async def get_global_feature_importance(request: Request, sample_size: int = 50)
 
 @app.get("/shap/summary-plot")
 @limiter.limit("10/minute")
-async def get_shap_summary_plot(request: Request, sample_size: int = 30):
+async def get_shap_summary_plot(request: Request, sample_size: int = 20):
+    print(f"[LOG] /shap/summary-plot called with sample_size={sample_size}")
     """Get SHAP summary plot as base64 image with optimized performance"""
     import asyncio
     import concurrent.futures
@@ -1565,9 +1738,17 @@ async def get_batch_shap_explanations(request: Request, features_list: List[Dict
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
+    # Add CORS headers to all error responses
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "*",
+        "Access-Control-Allow-Headers": "*",
+    }
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(detail="Internal server error").model_dump()
+        content=ErrorResponse(detail="Internal server error").model_dump(),
+        headers=headers
     )
 
 @app.get("/shap/performance")
@@ -1653,11 +1834,251 @@ async def clear_shap_cache(request: Request):
     except Exception as e:
         return {"error": f"Could not clear SHAP cache: {str(e)}"}
 
+@app.get("/clinician/{clinician_id}/patients", response_model=List[dict])
+async def get_clinician_patients(clinician_id: str, recent_days: int = 90, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        # Check if current user is authorized to access this clinician's patients
+        if current_user.role not in [UserRole.CLINICIAN, UserRole.CHV]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        if current_user.role == UserRole.CLINICIAN and current_user.id != clinician_id:
+            raise HTTPException(status_code=403, detail="Can only access your own patients")
+
+        recent_cutoff = datetime.now() - timedelta(days=recent_days)
+
+        # For clinicians: patients assigned OR assessed by this clinician
+        if current_user.role == UserRole.CLINICIAN:
+            assigned_mothers = db.query(DBMother).options(
+                joinedload(DBMother.user),
+                joinedload(DBMother.assessments),
+                joinedload(DBMother.appointments)
+            ).filter(DBMother.assigned_clinician_id == clinician_id)
+            assessed_mother_ids = db.query(DBRiskAssessment.mother_id).filter(
+                DBRiskAssessment.chv_id == clinician_id,
+                DBRiskAssessment.assessment_date >= recent_cutoff
+            ).distinct()
+            assessed_mothers = db.query(DBMother).options(
+                joinedload(DBMother.user),
+                joinedload(DBMother.assessments),
+                joinedload(DBMother.appointments)
+            ).filter(DBMother.id.in_(assessed_mother_ids))
+            # Filter assigned_mothers to only those with recent assessment if recent_days is set
+            assigned_mothers = [m for m in assigned_mothers if any(a.assessment_date >= recent_cutoff for a in m.assessments)]
+            mothers = list({m.id: m for m in list(assigned_mothers) + list(assessed_mothers)}.values())
+        # For CHVs: patients assigned OR assessed by this CHV
+        elif current_user.role == UserRole.CHV:
+            assigned_mothers = db.query(DBMother).options(
+                joinedload(DBMother.user),
+                joinedload(DBMother.assessments),
+                joinedload(DBMother.appointments)
+            ).filter(DBMother.assigned_chv_id == clinician_id)
+            assessed_mother_ids = db.query(DBRiskAssessment.mother_id).filter(
+                DBRiskAssessment.chv_id == clinician_id,
+                DBRiskAssessment.assessment_date >= recent_cutoff
+            ).distinct()
+            assessed_mothers = db.query(DBMother).options(
+                joinedload(DBMother.user),
+                joinedload(DBMother.assessments),
+                joinedload(DBMother.appointments)
+            ).filter(DBMother.id.in_(assessed_mother_ids))
+            assigned_mothers = [m for m in assigned_mothers if any(a.assessment_date >= recent_cutoff for a in m.assessments)]
+            mothers = list({m.id: m for m in list(assigned_mothers) + list(assessed_mothers)}.values())
+        else:
+            mothers = []
+        print(f"Found {len(mothers)} mothers for user {clinician_id}")
+        results = []
+        for mother in mothers:
+            latest_assessment = None
+            all_assessments = []
+            if mother.assessments:
+                latest_assessment_obj = max(mother.assessments, key=lambda a: a.assessment_date)
+                latest_assessment = RiskAssessmentOut.model_validate(latest_assessment_obj).model_dump()
+                all_assessments = [RiskAssessmentOut.model_validate(a).model_dump() for a in mother.assessments]
+            next_appointment = None
+            all_appointments = []
+            if mother.appointments:
+                future_appointments = [a for a in mother.appointments if a.appointment_date >= datetime.now()]
+                if future_appointments:
+                    next_appointment_obj = min(future_appointments, key=lambda a: a.appointment_date)
+                    next_appointment = AppointmentOut.model_validate(next_appointment_obj).model_dump()
+                all_appointments = [AppointmentOut.model_validate(a).model_dump() for a in mother.appointments]
+            all_medications = []
+            if hasattr(mother, 'medications') and mother.medications:
+                all_medications = [MedicationOut.model_validate(m).model_dump() for m in mother.medications]
+            emergency_contact_raw = getattr(mother, 'emergency_contact', None)
+            try:
+                if emergency_contact_raw is not None:
+                    emergency_contact = int(emergency_contact_raw)
+                else:
+                    emergency_contact = None
+            except Exception as e:
+                emergency_contact = None  # fallback to None if conversion fails
+            mother_dict = {
+                'id': mother.id,
+                'user_id': mother.user_id,
+                'age': mother.age,
+                'gestational_age': mother.gestational_age,
+                'previous_pregnancies': mother.previous_pregnancies,
+                'previous_complications': mother.previous_complications,
+                'emergency_contact': emergency_contact,
+                'assigned_chv_id': mother.assigned_chv_id,
+                'assigned_clinician_id': mother.assigned_clinician_id,
+                'address': mother.user.location if mother.user else None,
+                'created_at': getattr(mother, 'created_at', None),
+            }
+            try:
+                results.append({
+                    'patient': PregnantMotherOut.model_validate(mother_dict).model_dump(),
+                    'latest_assessment': latest_assessment,
+                    'all_assessments': all_assessments,
+                    'next_appointment': next_appointment,
+                    'all_appointments': all_appointments,
+                    'all_medications': all_medications
+                })
+            except Exception as e:
+                logger.error(f"Error validating mother data for {mother.id}: {str(e)}")
+                continue
+        return results
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /clinician/{{clinician_id}}/patients endpoint: {str(e)}\n{traceback.format_exc()}")
+        print(f"Error in /clinician/{{clinician_id}}/patients endpoint: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/mothers/register", response_model=dict)
+async def register_mother(mother: MotherRegistrationIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    logger.info(f"Registration attempt by user {getattr(current_user, 'id', 'unknown')} ({getattr(current_user, 'role', 'unknown')}) for mother: {getattr(mother, 'national_id', 'unknown')}")
+    logger.info(f"Received mother data: {mother.model_dump()}")
+    try:
+        if current_user.role not in [UserRole.CLINICIAN, UserRole.CHV]:
+            logger.error(f"User {getattr(current_user, 'id', 'unknown')} with role {getattr(current_user, 'role', 'unknown')} not authorized to register mothers")
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+        # assigned_chv_id is now optional
+        assigned_chv_id = getattr(mother, 'assigned_chv_id', None)
+        # No longer require assigned_chv_id
+
+        logger.info(f"User authorized. Creating mother record...")
+        
+        # Create User record for the mother
+        user_id = str(uuid.uuid4())
+        db_user = DBUser(
+            id=user_id,
+            username=mother.national_id,
+            email=f"{mother.national_id}@example.com",
+            full_name=mother.full_name,
+            role=UserRole.PREGNANT_MOTHER,
+            phone_number=encrypt_sensitive_data(mother.phone_number),
+            location=mother.address,
+            is_active=True,
+            hashed_password=encrypt_sensitive_data(mother.national_id),  # temp password
+        )
+        logger.info(f"Created user record with ID: {user_id}")
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        # Use provided mother_id if present, else generate one
+        mother_id = mother.mother_id if getattr(mother, 'mother_id', None) else f"M{user_id[:8].upper()}"
+        # Convert previous_complications to string if it's a list
+        prev_comp = mother.previous_complications
+        if isinstance(prev_comp, list):
+            prev_comp = ','.join(prev_comp)
+        db_mother = DBMother(
+            id=str(mother_id),
+            user_id=str(user_id),
+            age=int(calculate_age(mother.date_of_birth)),
+            gestational_age=int(mother.gestational_age) if mother.gestational_age is not None else None,
+            previous_pregnancies=int(mother.gravida),
+            previous_complications=prev_comp,
+            emergency_contact=str(mother.next_of_kin_phone),
+            assigned_chv_id=str(assigned_chv_id) if assigned_chv_id else None,
+            assigned_clinician_id=str(current_user.id) if current_user.role == UserRole.CLINICIAN else None,
+        )
+        logger.info(f"Created mother record with ID: {mother_id}")
+        db.add(db_mother)
+        db.commit()
+        db.refresh(db_mother)
+
+        # Create initial assessment for the new mother
+        from models_db import RiskAssessment as DBRiskAssessment
+        initial_assessment = DBRiskAssessment(
+            id=str(uuid.uuid4()),
+            mother_id=mother_id,
+            chv_id=current_user.id if current_user.role == UserRole.CHV else None,
+            assessment_date=datetime.now(),
+            age=db_mother.age or 25,
+            systolic_bp=120.0,
+            diastolic_bp=80.0,
+            blood_sugar=8.0,
+            body_temp=98.6,
+            heart_rate=72,
+            gestational_age=db_mother.gestational_age or 20,
+            weight=65.0,
+            height=165.0,
+            symptoms='',
+            notes='Auto-generated initial assessment.',
+            bmi=65.0 / ((165.0 / 100) ** 2),
+            risk_level='low',
+            risk_score=0.1,
+            confidence=0.9,
+            recommendations='Initial checkup recommended.'
+        )
+        db.add(initial_assessment)
+        db.commit()
+        # Optionally, store extended info in a separate table or as JSON if needed
+        logger.info(f"Mother registered successfully: {mother_id} by user {getattr(current_user, 'id', 'unknown')}")
+        return {"success": True, "mother_id": mother_id, "user_id": user_id}
+    except Exception as e:
+        logger.error(f"Mother registration failed for {getattr(mother, 'national_id', 'unknown')}: {str(e)}", exc_info=True)
+        raise
+
+# Helper function to calculate age from date_of_birth
+def calculate_age(date_of_birth_str: str) -> int:
+    dob = date.fromisoformat(date_of_birth_str)
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+@app.get("/users/chvs", response_model=List[UserOut])
+async def list_chvs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all users with the CHV role."""
+    chvs = db.query(DBUser).filter(DBUser.role == UserRole.CHV).all()
+    return [UserOut.model_validate(chv) for chv in chvs]
+
+@app.put("/mothers/{mother_id}", response_model=PregnantMotherOut)
+async def update_mother(mother_id: str, mother: MotherRegistrationIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update a mother's details, including CHV assignment."""
+    db_mother = db.query(DBMother).filter(DBMother.id == mother_id).first()
+    if not db_mother:
+        raise HTTPException(status_code=404, detail="Mother not found")
+    # Only clinicians or CHVs can update
+    if current_user.role not in [UserRole.CLINICIAN, UserRole.CHV]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    # Remove CHV assignment requirement
+    # Update fields
+    db_mother.gestational_age = mother.gestational_age
+    db_mother.previous_pregnancies = mother.gravida
+    db_mother.previous_complications = mother.previous_complications
+    db_mother.emergency_contact = mother.next_of_kin_phone
+    db_mother.assigned_chv_id = mother.assigned_chv_id if hasattr(mother, 'assigned_chv_id') else db_mother.assigned_chv_id
+    db_mother.assigned_clinician_id = current_user.id if current_user.role == UserRole.CLINICIAN else db_mother.assigned_clinician_id
+    db.commit()
+    db.refresh(db_mother)
+    # Return updated mother
+    return PregnantMotherOut.model_validate(db_mother)
+
+@app.get("/users/clinicians", response_model=List[UserOut])
+async def list_clinicians(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all users with the CLINICIAN role."""
+    clinicians = db.query(DBUser).filter(DBUser.role == UserRole.CLINICIAN).all()
+    return [UserOut.model_validate(clinician) for clinician in clinicians]
+
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting Maternal Health Multi-User System...")
+    # print("🚀 Starting Maternal Health Multi-User System...")
     if model is not None:
-        print("✅ Ready to serve predictions!")
+        # print("✅ Ready to serve predictions!")
+        pass
     else:
-        print("⚠️  Running without model - predictions will use fallback")
+        # print("⚠️  Running without model - predictions will use fallback")
+        pass
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -16,10 +16,8 @@ warnings.filterwarnings('ignore')
 # Try to import matplotlib and shap with better error handling
 try:
     import matplotlib.pyplot as plt
-    import seaborn as sns
 except ImportError as e:
     plt = None
-    sns = None
 
 try:
     import shap
@@ -33,6 +31,7 @@ class SHAPExplainer:
     """Enhanced SHAP explainer with visualization and formatting capabilities."""
     
     def __init__(self, model=None):
+        print(f"[SHAP DEBUG] Initializing SHAPExplainer with model: {type(model)}")
         self.model = model
         self.explainer = None
         self.feature_names = [
@@ -47,10 +46,12 @@ class SHAPExplainer:
             'HeartRate': 'Heart rate (beats per minute)'
         }
         self._initialize_explainer()
+        print(f"[SHAP DEBUG] Explainer after init: {type(self.explainer)}")
     
     def _initialize_explainer(self):
-        """Initialize the appropriate SHAP explainer for the model."""
+        print(f"[SHAP DEBUG] _initialize_explainer called. Model: {type(self.model)}")
         if self.model is None or shap is None:
+            print("[SHAP DEBUG] Model is None or SHAP is not installed.")
             return
         
         try:
@@ -66,17 +67,18 @@ class SHAPExplainer:
                     if hasattr(base_estimator, 'feature_importances_'):
                         try:
                             self.explainer = TreeExplainer(base_estimator)
-                            print("Using TreeExplainer with calibrated XGBoost base estimator")
+                            print("[SHAP DEBUG] Using TreeExplainer with calibrated XGBoost base estimator")
                             return
                         except Exception as e:
-                
+                            print(f"[SHAP DEBUG] TreeExplainer with base_estimator failed: {e}")
                 # Try TreeExplainer directly on the calibrated model
                 if hasattr(underlying_model, 'feature_importances_'):
                     try:
                         self.explainer = TreeExplainer(underlying_model)
-                        print("Using TreeExplainer with calibrated model")
+                        print("[SHAP DEBUG] Using TreeExplainer with calibrated model")
                         return
                     except Exception as e:
+                        print(f"[SHAP DEBUG] TreeExplainer with calibrated model failed: {e}")
                 
                 # Fallback to KernelExplainer for other models
                 # Create background data for KernelExplainer
@@ -94,7 +96,7 @@ class SHAPExplainer:
                         return np.zeros(1)
                     df = self._to_feature_df(data)
                     # Get the full prediction result from pipeline
-                    result = self.model.predict(df)
+                    result = self.model.predict(df, suppress_log=True)
                     # Extract just the predicted risk level indices for SHAP
                     # The pipeline returns a list of dicts, we need to extract the risk level
                     if isinstance(result, list) and len(result) > 0:
@@ -110,16 +112,18 @@ class SHAPExplainer:
                 
                 try:
                     self.explainer = KernelExplainer(predict_wrapper, background_df)
-                    print("Using KernelExplainer (fallback)")
+                    print("[SHAP DEBUG] Using KernelExplainer (fallback)")
                 except Exception as e:
+                    print(f"[SHAP DEBUG] KernelExplainer fallback failed: {e}")
                     self.explainer = None
             else:
                 # Direct model
                 if hasattr(self.model, 'feature_importances_'):
                     try:
                         self.explainer = TreeExplainer(self.model)
-                        print("Using TreeExplainer with direct model")
+                        print("[SHAP DEBUG] Using TreeExplainer with direct model")
                     except Exception as e:
+                        print(f"[SHAP DEBUG] TreeExplainer with direct model failed: {e}")
                         self.explainer = None
                 else:
                     # Fallback to KernelExplainer
@@ -137,7 +141,7 @@ class SHAPExplainer:
                             return np.zeros(1)
                         df = self._to_feature_df(data)
                         # Get the full prediction result from pipeline
-                        result = self.model.predict(df)
+                        result = self.model.predict(df, suppress_log=True)
                         # Extract just the predicted risk level indices for SHAP
                         if isinstance(result, list) and len(result) > 0:
                             # Get the predicted risk level from each result
@@ -152,11 +156,14 @@ class SHAPExplainer:
                     
                     try:
                         self.explainer = KernelExplainer(predict_wrapper_direct, background_df)
-                        print("Using KernelExplainer (fallback)")
+                        print("[SHAP DEBUG] Using KernelExplainer (fallback) for direct model")
                     except Exception as e:
+                        print(f"[SHAP DEBUG] KernelExplainer fallback for direct model failed: {e}")
                         self.explainer = None
         except Exception as e:
+            print(f"[SHAP DEBUG] Exception in _initialize_explainer: {e}")
             self.explainer = None
+        print(f"[SHAP DEBUG] Explainer after _initialize_explainer: {type(self.explainer)}")
     
     def _to_feature_df(self, data):
         """Convert input to DataFrame with correct columns and shape for the model."""
@@ -200,7 +207,7 @@ class SHAPExplainer:
             })
             
             # Get SHAP values
-            if isinstance(self.explainer, TreeExplainer):
+            if TreeExplainer is not None and isinstance(self.explainer, TreeExplainer):
                 shap_values = self.explainer.shap_values(sample_data)
                 if isinstance(shap_values, list):
                     shap_values = shap_values[0]
@@ -212,22 +219,19 @@ class SHAPExplainer:
             return None, None
     
     def get_individual_explanation(self, features: Dict[str, float]) -> List[Dict[str, Any]]:
-        """Get SHAP explanation for individual prediction with improved formatting."""
+        """Get SHAP explanation for individual prediction with improved formatting and error reporting."""
         if self.explainer is None:
-            return []
-        
+            return [{"error": "SHAP explainer is not initialized"}]
         try:
             # Prepare features for SHAP
             feature_df = pd.DataFrame([features])
-            
             # Get SHAP values
-            if isinstance(self.explainer, TreeExplainer):
+            if TreeExplainer is not None and isinstance(self.explainer, TreeExplainer):
                 shap_values = self.explainer.shap_values(feature_df)
                 if isinstance(shap_values, list):
                     shap_values = shap_values[0]  # Take first class for binary/multiclass
             else:
                 shap_values = self.explainer.shap_values(feature_df)
-            
             # Format explanation
             explanations = []
             for i, feature in enumerate(self.feature_names):
@@ -242,7 +246,6 @@ class SHAPExplainer:
                             continue
                     else:
                         continue
-                    
                     explanations.append({
                         "feature": feature,
                         "feature_description": self.feature_descriptions[feature],
@@ -252,18 +255,17 @@ class SHAPExplainer:
                         "impact": "positive" if shap_value > 0 else "negative",
                         "importance_rank": 0  # Will be set after sorting
                     })
-            
             # Sort by absolute SHAP value (importance)
             explanations.sort(key=lambda x: x["abs_shap_value"], reverse=True)
-            
             # Add importance rank
             for i, exp in enumerate(explanations):
                 exp["importance_rank"] = i + 1
-            
             return explanations
-            
         except Exception as e:
-            return []
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[SHAP ERROR] {e}\n{tb}")
+            return [{"error": str(e), "traceback": tb}]
     
     def get_global_feature_importance(self, sample_size: int = 100) -> Dict[str, Any]:
         """Get global feature importance using SHAP values."""
@@ -305,31 +307,24 @@ class SHAPExplainer:
     
     def create_shap_summary_plot(self, sample_size: int = 50) -> str:
         """Create SHAP summary plot and return as base64 image."""
-        if self.explainer is None or plt is None:
-            print("Warning: SHAP explainer or matplotlib not available for summary plot")
+        if self.explainer is None or plt is None or shap is None:
             return ""
-        
         try:
-            # Use cached SHAP values for better performance
             shap_values, sample_data = self._get_cached_shap_values(sample_size)
             if shap_values is None:
                 return ""
-            
-            # Create plot
+            if plt is None:
+                return ""
             plt.figure(figsize=(10, 6))
             shap.summary_plot(shap_values, sample_data, show=False)
             plt.title("SHAP Feature Importance Summary", fontsize=14, fontweight='bold')
             plt.tight_layout()
-            
-            # Convert to base64
             buffer = io.BytesIO()
             plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
             buffer.seek(0)
             image_base64 = base64.b64encode(buffer.getvalue()).decode()
             plt.close()
-            
             return image_base64
-            
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -337,22 +332,18 @@ class SHAPExplainer:
     
     def create_shap_force_plot(self, features: Dict[str, float]) -> str:
         """Create SHAP force plot for individual prediction."""
-        if self.explainer is None or plt is None:
-            print("Warning: SHAP explainer or matplotlib not available for force plot")
+        if self.explainer is None or plt is None or shap is None:
             return ""
-        
         try:
             feature_df = pd.DataFrame([features])
-            
-            # Get SHAP values
-            if isinstance(self.explainer, TreeExplainer):
+            if TreeExplainer is not None and isinstance(self.explainer, TreeExplainer):
                 shap_values = self.explainer.shap_values(feature_df)
                 if isinstance(shap_values, list):
                     shap_values = shap_values[0]
             else:
                 shap_values = self.explainer.shap_values(feature_df)
-            
-            # Create force plot
+            if plt is None:
+                return ""
             plt.figure(figsize=(12, 4))
             shap.force_plot(
                 self.explainer.expected_value if hasattr(self.explainer, 'expected_value') else 0,
@@ -362,16 +353,12 @@ class SHAPExplainer:
             )
             plt.title("SHAP Force Plot - Individual Prediction", fontsize=14, fontweight='bold')
             plt.tight_layout()
-            
-            # Convert to base64
             buffer = io.BytesIO()
             plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
             buffer.seek(0)
             image_base64 = base64.b64encode(buffer.getvalue()).decode()
             plt.close()
-            
             return image_base64
-            
         except Exception as e:
             return ""
     
@@ -407,26 +394,30 @@ def set_shap_model(model):
     if model is not None:
         shap_explainer = SHAPExplainer(model)
     else:
-        print("Warning: Model is None, SHAP explainer will not be available")
+        # print("Warning: Model is None, SHAP explainer will not be available")
         shap_explainer = SHAPExplainer()
 
 def get_shap_explainer():
     """Get the global SHAP explainer instance."""
     global shap_explainer
+    print(f"[SHAP DEBUG] get_shap_explainer called. Current explainer: {type(shap_explainer)}")
     if shap_explainer is None:
         # Import model from app (this will be set when model loads)
         try:
             import sys
             if 'app' in sys.modules:
                 from app import model
+                print(f"[SHAP DEBUG] Importing model from app: {type(model)}")
                 if model is not None:
                     shap_explainer = SHAPExplainer(model)
                 else:
-                    print("Warning: Model not loaded, SHAP explainer will not be available")
+                    print("[SHAP DEBUG] Model not loaded, SHAP explainer will not be available")
                     shap_explainer = SHAPExplainer()
             else:
-                print("Warning: App module not loaded yet, creating empty SHAP explainer")
+                print("[SHAP DEBUG] App module not loaded yet, creating empty SHAP explainer")
                 shap_explainer = SHAPExplainer()
         except Exception as e:
+            print(f"[SHAP DEBUG] Exception in get_shap_explainer: {e}")
             shap_explainer = SHAPExplainer()
+    print(f"[SHAP DEBUG] Returning explainer: {type(shap_explainer)}")
     return shap_explainer 
