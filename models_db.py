@@ -3,6 +3,11 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
 from database import Base  # Use the shared Base
+# Add JSON import for modern DBs
+try:
+    from sqlalchemy import JSON
+except ImportError:
+    JSON = None  # Fallback for legacy DBs
 
 class UserRoleEnum(str, enum.Enum):
     PREGNANT_MOTHER = "pregnant_mother"
@@ -82,6 +87,9 @@ class RiskAssessment(Base):
     risk_score = Column(Float)
     confidence = Column(Float)
     recommendations = Column(Text)  # Store as comma-separated string
+    # New columns for SHAP and prediction storage
+    shap_explanation = Column(JSON if JSON else Text, nullable=True)  # Store as JSON if possible, else as text
+    prediction_json = Column(JSON if JSON else Text, nullable=True)   # Store as JSON if possible, else as text
     mother = relationship("PregnantMother", back_populates="assessments")
     chv = relationship("User", back_populates="assessments", foreign_keys=[chv_id])
 

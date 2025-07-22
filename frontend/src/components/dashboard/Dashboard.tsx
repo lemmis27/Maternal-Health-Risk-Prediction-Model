@@ -204,8 +204,8 @@ const Dashboard: React.FC = () => {
                 Copy
               </Button>
               {copySuccess && <Typography variant="caption" color="success.main">Copied!</Typography>}
-              {/* For mothers, also show mother ID */}
-              {user?.role === UserRole.PREGNANT_MOTHER && motherId && (
+              {/* Always show mother ID if available */}
+              {motherId && (
                 <>
                   <Typography variant="h6" sx={{ ml: 3 }}>Your Mother ID:</Typography>
                   <Typography variant="body1" sx={{ fontWeight: 'bold', letterSpacing: 1 }}>{motherId}</Typography>

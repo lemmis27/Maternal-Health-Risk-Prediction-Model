@@ -65,6 +65,7 @@ const MotherRegistrationForm: React.FC<MotherRegistrationFormProps> = ({ onSucce
   const [success, setSuccess] = useState('');
   const [motherIdError, setMotherIdError] = useState('');
   const [allMotherIds, setAllMotherIds] = useState<string[]>([]);
+  const [existingMotherId, setExistingMotherId] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch all mothers for advanced ID validation
@@ -155,7 +156,14 @@ const MotherRegistrationForm: React.FC<MotherRegistrationFormProps> = ({ onSucce
         // assigned_chv_id removed
       };
       const res = await mothersAPI.register(payload);
+      if (res.data && res.data.success === false && res.data.error) {
+        setError(res.data.error + (res.data.mother_id ? ` (Mother ID: ${res.data.mother_id})` : ''));
+        setExistingMotherId(res.data.mother_id || null);
+        setLoading(false);
+        return;
+      }
       setSuccess('Mother registered successfully!');
+      setExistingMotherId(null);
       setForm(initialState);
       if (onSuccess) onSuccess(res.data);
     } catch (err: any) {
@@ -313,7 +321,20 @@ const MotherRegistrationForm: React.FC<MotherRegistrationFormProps> = ({ onSucce
           </Box>
         </Box>
 
-        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+        {/* Error message with link to view existing mother if duplicate */}
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+            {existingMotherId && (
+              <>
+                {' '}
+                <a href={`/mothers/${existingMotherId}`} style={{ textDecoration: 'underline', color: '#1976d2' }}>
+                  View Existing Mother
+                </a>
+              </>
+            )}
+          </Alert>
+        )}
         {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>

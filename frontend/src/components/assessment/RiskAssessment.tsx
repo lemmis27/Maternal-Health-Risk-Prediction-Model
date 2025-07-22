@@ -144,14 +144,25 @@ const RiskAssessment: React.FC = () => {
     }
 
     try {
-      const appointmentPayload = {
-        mother_id: formData.mother_id,
-        clinician_id: user && user.role === UserRole.CLINICIAN ? user.id : selectedClinicianId,
-        chv_id: user && user.role === UserRole.CHV ? user.id : undefined,
-        appointment_date: appointmentData.appointment_date,
-        reason: appointmentData.reason,
-        notes: appointmentData.notes,
-      };
+      let appointmentPayload;
+      if (user && user.role === UserRole.CHV) {
+        appointmentPayload = {
+          mother_id: formData.mother_id,
+          clinician_id: selectedClinicianId,
+          chv_id: user.id,
+          appointment_date: appointmentData.appointment_date,
+          reason: appointmentData.reason,
+          notes: appointmentData.notes,
+        };
+      } else if (user && user.role === UserRole.CLINICIAN) {
+        appointmentPayload = {
+          mother_id: formData.mother_id,
+          clinician_id: user.id,
+          appointment_date: appointmentData.appointment_date,
+          reason: appointmentData.reason,
+          notes: appointmentData.notes,
+        };
+      }
 
       await appointmentAPI.create(appointmentPayload);
       setShowAppointmentDialog(false);
@@ -622,7 +633,7 @@ const RiskAssessment: React.FC = () => {
                   </List>
                 </Box>
               )}
-              {user.role === UserRole.CHV && (
+              {(user.role === UserRole.CHV || user.role === UserRole.CLINICIAN) && (
                 <Box mt={3}>
                   <Typography variant="h6" gutterBottom>
                     Recommended Appointment

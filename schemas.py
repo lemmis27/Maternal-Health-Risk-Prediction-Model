@@ -195,7 +195,7 @@ class RiskAssessmentIn(BaseModel):
 class AppointmentIn(BaseModel):
     mother_id: str
     clinician_id: str
-    chv_id: Optional[str]
+    chv_id: Optional[str] = None
     appointment_date: datetime
     status: AppointmentStatus = AppointmentStatus.SCHEDULED
     reason: str

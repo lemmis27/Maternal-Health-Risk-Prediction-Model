@@ -638,29 +638,49 @@ async def register_user(request: Request, user: UserIn, db: Session = Depends(ge
     db.commit()
     db.refresh(db_user)
     
-    # If user is a pregnant mother, automatically create mother record
+    # If user is a pregnant mother, automatically create or link mother record
     mother_id = None
     if user.role == UserRole.PREGNANT_MOTHER:
-        # Check if mother_id is provided in the request
-        mother_id = getattr(user, 'mother_id', None)
-        if not mother_id:
+        # If mother_id is provided, link user to existing mother record
+        provided_mother_id = getattr(user, 'mother_id', None)
+        if provided_mother_id:
+            mother_record = db.query(DBMother).filter(DBMother.id == provided_mother_id).first()
+            if mother_record:
+                mother_record.user_id = db_user.id
+                db.commit()
+                mother_id = provided_mother_id
+            else:
+                # If not found, create new mother record
+                mother_id = provided_mother_id
+                db_mother = DBMother(
+                    id=mother_id,
+                    user_id=db_user.id,
+                    age=25,  # Default age, should be updated
+                    gestational_age=None,
+                    previous_pregnancies=0,
+                    previous_complications='',
+                    emergency_contact=encrypted_phone,  # Use phone as emergency contact initially
+                    assigned_chv_id=None,
+                    assigned_clinician_id=None
+                )
+                db.add(db_mother)
+                db.commit()
+        else:
             # Generate a unique mother ID if not provided
             mother_id = f"M{db_user.id[:8].upper()}"
-        
-        # Create mother record with basic info (can be updated later)
-        db_mother = DBMother(
-            id=mother_id,
-            user_id=db_user.id,
-            age=25,  # Default age, should be updated
-            gestational_age=None,
-            previous_pregnancies=0,
-            previous_complications='',
-            emergency_contact=encrypted_phone,  # Use phone as emergency contact initially
-            assigned_chv_id=None,
-            assigned_clinician_id=None
-        )
-        db.add(db_mother)
-        db.commit()
+            db_mother = DBMother(
+                id=mother_id,
+                user_id=db_user.id,
+                age=25,  # Default age, should be updated
+                gestational_age=None,
+                previous_pregnancies=0,
+                previous_complications='',
+                emergency_contact=encrypted_phone,  # Use phone as emergency contact initially
+                assigned_chv_id=None,
+                assigned_clinician_id=None
+            )
+            db.add(db_mother)
+            db.commit()
     
     return {
         "message": "User registered successfully", 
@@ -853,14 +873,28 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
         # Get recommendations
         recommendations = ml_model.get_recommendations(risk_level, features)
         # Determine chv_id based on user role and assessment data
-        chv_id = assessment.chv_id if assessment.chv_id else (current_user.id if current_user.role == UserRole.CHV else None)
+        if current_user.role == UserRole.CHV:
+            chv_id = current_user.id
+            if not chv_id:
+                raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+        elif current_user.role == UserRole.CLINICIAN:
+            chv_id = assessment.chv_id if assessment.chv_id else None
+            # Optionally, try to assign from mother, but do NOT raise error if missing
+            if not chv_id:
+                mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+                if mother is not None and getattr(mother, 'assigned_chv_id', None) is not None and str(getattr(mother, 'assigned_chv_id')) != "None":
+                    chv_id = getattr(mother, 'assigned_chv_id')
+            # Do NOT raise error if chv_id is still None
+        else:
+            chv_id = None
+        # Remove unconditional error for missing chv_id
         # If chv_id is still None, try to get it from the mother record
         if not chv_id:
             mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
-            if mother and mother.assigned_chv_id:
-                chv_id = mother.assigned_chv_id
+            if mother is not None and getattr(mother, 'assigned_chv_id', None) is not None and str(getattr(mother, 'assigned_chv_id')) != "None":
+                chv_id = getattr(mother, 'assigned_chv_id')
             else:
-                raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+                chv_id = None
         # Handle symptoms - convert array to string if needed
         symptoms_str = assessment.symptoms
         if isinstance(symptoms_str, list):
@@ -978,14 +1012,28 @@ async def create_bulk_assessments(request: Request, assessments: List[RiskAssess
     for i, (assessment, result) in enumerate(zip(assessments, results)):
         if isinstance(result, dict) and "error" not in result:
             # Determine chv_id based on user role and assessment data
-            chv_id = assessment.chv_id if assessment.chv_id else (current_user.id if current_user.role == UserRole.CHV else None)
+            if current_user.role == UserRole.CHV:
+                chv_id = current_user.id
+                if not chv_id:
+                    raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+            elif current_user.role == UserRole.CLINICIAN:
+                chv_id = assessment.chv_id if assessment.chv_id else None
+                # Optionally, try to assign from mother, but do NOT raise error if missing
+                if not chv_id:
+                    mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+                    if mother is not None and getattr(mother, 'assigned_chv_id', None) is not None and str(getattr(mother, 'assigned_chv_id')) != "None":
+                        chv_id = getattr(mother, 'assigned_chv_id')
+                # Do NOT raise error if chv_id is still None
+            else:
+                chv_id = None
+            # Remove unconditional error for missing chv_id
             # If chv_id is still None, try to get it from the mother record
             if not chv_id:
                 mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
-                if mother and mother.assigned_chv_id:
-                    chv_id = mother.assigned_chv_id
+                if mother is not None and getattr(mother, 'assigned_chv_id', None) is not None and str(getattr(mother, 'assigned_chv_id')) != "None":
+                    chv_id = getattr(mother, 'assigned_chv_id')
                 else:
-                    raise HTTPException(status_code=400, detail="CHV ID is required for risk assessment")
+                    chv_id = None
             
             # Handle symptoms - convert array to string if needed
             symptoms_str = assessment.symptoms or ''
@@ -1087,14 +1135,16 @@ async def create_appointment(appointment: AppointmentIn, current_user: User = De
     # Handle CHV creating appointments (they may not have a clinician_id)
     if current_user.role == UserRole.CHV:
         # CHV can create appointments but need to assign a clinician
-        # For now, we'll allow empty clinician_id for CHV appointments
         clinician_id = appointment.clinician_id if appointment.clinician_id else None
         chv_id = current_user.id
     else:
         # Clinician creating appointment
         clinician_id = current_user.id
-        chv_id = appointment.chv_id
+        chv_id = appointment.chv_id if hasattr(appointment, 'chv_id') else None
     
+    if not clinician_id:
+        raise HTTPException(status_code=400, detail="Clinician ID is required for appointment.")
+
     db_appointment = DBAppointment(
         id=str(uuid.uuid4()),
         mother_id=appointment.mother_id,
@@ -1952,6 +2002,38 @@ async def register_mother(mother: MotherRegistrationIn, current_user: User = Dep
         if current_user.role not in [UserRole.CLINICIAN, UserRole.CHV]:
             logger.error(f"User {getattr(current_user, 'id', 'unknown')} with role {getattr(current_user, 'role', 'unknown')} not authorized to register mothers")
             raise HTTPException(status_code=403, detail="Not authorized")
+
+        # Prevent duplicate mother registration by national_id
+        existing_mother = db.query(DBMother).join(DBUser, DBMother.user_id == DBUser.id).filter(DBUser.username == mother.national_id).first()
+        if existing_mother:
+            logger.warning(f"Duplicate mother registration attempt for national_id: {mother.national_id}")
+            return {"success": False, "error": "Mother with this National ID already exists.", "mother_id": existing_mother.id}
+
+        # Check for existing user by username or email
+        existing_user = db.query(DBUser).filter(
+            (DBUser.username == mother.national_id) | (DBUser.email == f"{mother.national_id}@example.com")
+        ).first()
+        if existing_user:
+            logger.info(f"Linking new mother record to existing user: {existing_user.id}")
+            user_id = existing_user.id
+        else:
+            # Create User record for the mother
+            user_id = str(uuid.uuid4())
+            db_user = DBUser(
+                id=user_id,
+                username=mother.national_id,
+                email=f"{mother.national_id}@example.com",
+                full_name=mother.full_name,
+                role=UserRole.PREGNANT_MOTHER,
+                phone_number=encrypt_sensitive_data(mother.phone_number),
+                location=mother.address,
+                is_active=True,
+                hashed_password=encrypt_sensitive_data(mother.national_id),  # temp password
+            )
+            logger.info(f"Created user record with ID: {user_id}")
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
 
         # assigned_chv_id is now optional
         assigned_chv_id = getattr(mother, 'assigned_chv_id', None)
