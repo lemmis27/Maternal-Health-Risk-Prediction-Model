@@ -87,7 +87,18 @@ const RiskAssessment: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const id = params.get('motherId');
-    if (id) setMotherId(id);
+    const age = params.get('age');
+    const gestationalAge = params.get('gestationalAge');
+    
+    if (id) {
+      setMotherId(id);
+      setFormData(prev => ({
+        ...prev,
+        mother_id: id,
+        age: age ? parseInt(age) : prev.age,
+        gestational_age: gestationalAge ? parseInt(gestationalAge) : prev.gestational_age
+      }));
+    }
   }, [location.search]);
 
   // Auto-fill mother_id in formData if motherId is present and mothers are loaded
@@ -111,11 +122,23 @@ const RiskAssessment: React.FC = () => {
   }, [user && user.role]);
 
   // Check if user has permission to access risk assessment
-  if (!user || (user.role !== UserRole.CHV && user.role !== UserRole.CLINICIAN)) {
+  if (!user) {
+    return (
+      <Container maxWidth="lg">
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Loading user information...
+        </Alert>
+      </Container>
+    );
+  }
+  
+  if (user.role !== UserRole.CHV && user.role !== UserRole.CLINICIAN) {
     return (
       <Container maxWidth="lg">
         <Alert severity="error" sx={{ mt: 2 }}>
           You do not have permission to access risk assessment. Only CHV and Clinician roles can perform assessments.
+          <br />
+          Your role: {user.role}
         </Alert>
       </Container>
     );
@@ -394,6 +417,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 15, max: 50, step: 1 }}
+                    helperText="Age: 15-50 years"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -408,6 +433,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 70, max: 200, step: 1 }}
+                    helperText="Systolic BP: 70-200 mmHg"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -422,6 +449,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 40, max: 120, step: 1 }}
+                    helperText="Diastolic BP: 40-120 mmHg"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -436,6 +465,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 2.2, max: 25.0, step: 0.1 }}
+                    helperText="Blood Sugar: 2.2-25.0 mmol/L (includes severe hypoglycemia)"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -450,6 +481,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 95.0, max: 106.0, step: 0.1 }}
+                    helperText="Body Temp: 95.0-106.0°F"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -464,6 +497,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 40, max: 150, step: 1 }}
+                    helperText="Heart Rate: 40-150 bpm"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -478,6 +513,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 4, max: 42, step: 1 }}
+                    helperText="Gestational Age: 4-42 weeks"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -492,6 +529,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 30, max: 150, step: 0.1 }}
+                    helperText="Weight: 30-150 kg"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">
@@ -506,6 +545,8 @@ const RiskAssessment: React.FC = () => {
                     required
                     disabled={isLoading}
                     autoComplete="off"
+                    inputProps={{ min: 120, max: 200, step: 1 }}
+                    helperText="Height: 120-200 cm"
                   />
                 </Box>
                 <Box flex="1" minWidth="200px">

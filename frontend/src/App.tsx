@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Dashboard from './components/dashboard/Dashboard';
+import AdminDashboard from './components/dashboard/AdminDashboard';
 import RiskAssessment from './components/assessment/RiskAssessment';
 import MothersList from './components/mothers/MothersList';
 import Appointments from './components/appointments/Appointments';
@@ -16,6 +17,7 @@ import { ClinicianDashboardProvider } from './components/dashboard/ClinicianDash
 import ClinicianPatientList from './components/dashboard/ClinicianPatientList';
 import ClinicianRiskSummary from './components/dashboard/ClinicianRiskSummary';
 import RegisterMotherPage from './components/mothers/RegisterMotherPage';
+import { UserRole } from './types';
 import './App.css';
 
 // Create a custom theme
@@ -138,6 +140,16 @@ function App() {
               />
               <Route 
                 path="/assessment" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <RiskAssessment />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/risk-assessment" 
                 element={
                   <ProtectedRoute>
                     <Layout>

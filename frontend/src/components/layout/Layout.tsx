@@ -91,7 +91,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         return menuItems.filter(item => 
           ['Dashboard', 'Risk Assessment', 'Mothers', 'Appointments', 'Medications', 'Patient List', 'Risk Assessment Summary', 'Register New Mother'].includes(item.text)
         );
-      case UserRole.POLICYMAKER:
+      case UserRole.ADMIN:
         return menuItems.filter(item => 
           ['Dashboard', 'SHAP Analysis'].includes(item.text)
         );

@@ -18,6 +18,17 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  LinearProgress,
+  Divider,
+  IconButton,
+  Tooltip,
+  Badge,
+  Avatar,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  useTheme,
 } from '@mui/material';
 import {
   People,
@@ -28,13 +39,28 @@ import {
   Timeline,
   Logout,
   ContentCopy,
+  Refresh,
+  CalendarToday,
+  Phone,
+  LocalHospital,
+  TrendingUp,
+  TrendingDown,
+  Notifications,
+  HealthAndSafety,
+  PregnantWoman,
+  MonitorHeart,
+  BloodtypeOutlined,
+  FavoriteOutlined,
+  Schedule,
+  Info,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { dashboardAPI, mothersAPI, assessmentAPI } from '../../services/api';
 import { DashboardStats, UserRole } from '../../types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import ClinicianDashboard from './ClinicianDashboard';
+import AdminDashboard from './AdminDashboard';
 import MotherRegistrationForm from '../mothers/MotherRegistrationForm';
 import { ClinicianDashboardProvider } from './ClinicianDashboardContext';
 
@@ -68,8 +94,8 @@ const Dashboard: React.FC = () => {
           case UserRole.CLINICIAN:
             response = await dashboardAPI.getClinicianDashboard(user.id);
             break;
-          case UserRole.POLICYMAKER:
-            response = await dashboardAPI.getPolicymakerDashboard();
+          case UserRole.ADMIN:
+            response = await dashboardAPI.getAdminDashboard();
             break;
           case UserRole.PREGNANT_MOTHER:
             // Fetch mother id by user_id
@@ -85,7 +111,7 @@ const Dashboard: React.FC = () => {
                 assessments.sort((a: any, b: any) => new Date(b.assessment_date).getTime() - new Date(a.assessment_date).getTime());
                 setLatestAssessment(assessments[0]);
                 setAllAssessments(assessments);
-                
+
                 // Prepare data for chart
                 const chartData = assessments
                   .sort((a: any, b: any) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime())
@@ -179,334 +205,411 @@ const Dashboard: React.FC = () => {
             Logout
           </Button>
         </Box>
-        
-        {user?.role === UserRole.CLINICIAN ? (
+
+        {user?.role === UserRole.ADMIN ? (
+          // Render AdminDashboard for ADMIN users
+          <AdminDashboard />
+        ) : user?.role === UserRole.CLINICIAN ? (
           // Render ClinicianDashboard for CLINICIAN users
           <ClinicianDashboard />
         ) : user?.role === UserRole.PREGNANT_MOTHER ? (
-          // Pregnant Mother Dashboard
+          // Enhanced Pregnant Mother Dashboard
           <Box>
-            <Box display="flex" alignItems="center" gap={2} mb={2}>
-              <Typography variant="h6">Your User ID:</Typography>
-              <Typography variant="body1" sx={{ fontWeight: 'bold', letterSpacing: 1 }}>{user?.id}</Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<ContentCopy />}
-                onClick={() => {
-                  if (user?.id) {
-                    navigator.clipboard.writeText(user.id);
-                    setCopySuccess(true);
-                    setTimeout(() => setCopySuccess(false), 1500);
-                  }
-                }}
-              >
-                Copy
-              </Button>
-              {copySuccess && <Typography variant="caption" color="success.main">Copied!</Typography>}
-              {/* Always show mother ID if available */}
-              {motherId && (
-                <>
-                  <Typography variant="h6" sx={{ ml: 3 }}>Your Mother ID:</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 'bold', letterSpacing: 1 }}>{motherId}</Typography>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<ContentCopy />}
-                    onClick={() => {
-                      navigator.clipboard.writeText(motherId);
-                      setCopySuccess(true);
-                      setTimeout(() => setCopySuccess(false), 1500);
-                    }}
-                  >
-                    Copy
-                  </Button>
-                </>
-              )}
-            </Box>
-            <Alert severity="info" sx={{ mb: 3 }}>
-              Welcome, {user.full_name}! This is your maternal health dashboard.
-            </Alert>
-            
-            {/* Show latest risk assessment if available */}
-            {latestAssessment && (
-              <Box mb={3}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Latest Risk Assessment
-                    </Typography>
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Chip
-                        label={latestAssessment.risk_level?.toUpperCase() || 'N/A'}
-                        color={getRiskColor(latestAssessment.risk_level)}
-                        size="medium"
-                      />
-                      <Typography variant="body2" color="textSecondary">
-                        {latestAssessment.assessment_date ? new Date(latestAssessment.assessment_date).toLocaleString() : ''}
+            {loading && (
+              <Box sx={{ width: '100%', mb: 2 }}>
+                <LinearProgress />
+              </Box>
+            )}
+
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }} action={
+                <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              }>
+                {error}
+              </Alert>
+            )}
+
+            {/* Header Section with User Info */}
+            <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
+                      <PregnantWoman sx={{ fontSize: 32 }} />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
+                        Welcome, {user.full_name}!
+                      </Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        Your maternal health dashboard
                       </Typography>
                     </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-            )}
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Tooltip title="Refresh Dashboard">
+                      <IconButton
+                        sx={{ color: 'white' }}
+                        onClick={() => window.location.reload()}
+                      >
+                        <Refresh />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Notifications">
+                      <IconButton sx={{ color: 'white' }}>
+                        <Badge badgeContent={0} color="error">
+                          <Notifications />
+                        </Badge>
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
 
-            {/* Assessment History Chart */}
-            {assessmentHistoryData.length > 0 && (
-              <Box mb={3}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Assessment History
+                {/* ID Information */}
+                <Divider sx={{ my: 2, bgcolor: 'rgba(255,255,255,0.2)' }} />
+                <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="body2">User ID:</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      {user?.id}
                     </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={assessmentHistoryData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis domain={[0, 3]} ticks={[1, 2, 3]} />
-                        <Tooltip 
-                          formatter={(value: any, name: string) => {
-                            if (name === 'riskLevel') {
-                              const labels = { 1: 'Low', 2: 'Medium', 3: 'High' };
-                              return [labels[value as keyof typeof labels] || value, 'Risk Level'];
-                            }
-                            return [value, name];
-                          }}
-                        />
-                        <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="riskLevel" 
-                          stroke="#8884d8" 
-                          strokeWidth={2}
-                          dot={{ fill: '#8884d8', strokeWidth: 2, r: 4 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </Box>
-            )}
-            
-            <Box display="flex" gap={3} flexWrap="wrap">
-              <Box flex="1" minWidth="250px">
-                <Card>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" justifyContent="space-between">
-                      <Box>
-                        <Typography color="textSecondary" gutterBottom>
-                          Your Health Status
-                        </Typography>
-                        <Typography variant="h4" color="success.main">
-                          Good
-                        </Typography>
-                      </Box>
-                      <CheckCircle color="success" sx={{ fontSize: 40 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-
-              <Box flex="1" minWidth="250px">
-                <Card>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" justifyContent="space-between">
-                      <Box>
-                        <Typography color="textSecondary" gutterBottom>
-                          Next Appointment
-                        </Typography>
-                        <Typography variant="h4">
-                          None Scheduled
-                        </Typography>
-                      </Box>
-                      <Assessment color="primary" sx={{ fontSize: 40 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-
-              <Box flex="1" minWidth="250px">
-                <Card>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" justifyContent="space-between">
-                      <Box>
-                        <Typography color="textSecondary" gutterBottom>
-                          Your CHV
-                        </Typography>
-                        <Typography variant="h4">
-                          Not Assigned
-                        </Typography>
-                      </Box>
-                      <People color="primary" sx={{ fontSize: 40 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-
-              <Box flex="1" minWidth="250px">
-                <Card>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" justifyContent="space-between">
-                      <Box>
-                        <Typography color="textSecondary" gutterBottom>
-                          Your Clinician
-                        </Typography>
-                        <Typography variant="h4">
-                          Not Assigned
-                        </Typography>
-                      </Box>
-                      <People color="primary" sx={{ fontSize: 40 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-            </Box>
-
-            {/* Assessment History Panel */}
-            {allAssessments.length > 0 && (
-              <Box mt={3}>
-                <Accordion>
-                  <AccordionSummary expandIcon={<ExpandMore />}>
+                    <IconButton
+                      size="small"
+                      sx={{ color: 'white' }}
+                      onClick={() => {
+                        if (user?.id) {
+                          navigator.clipboard.writeText(user.id);
+                          setCopySuccess(true);
+                          setTimeout(() => setCopySuccess(false), 1500);
+                        }
+                      }}
+                    >
+                      <ContentCopy fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  {motherId && (
                     <Box display="flex" alignItems="center" gap={1}>
-                      <Timeline />
-                      <Typography variant="h6">
-                        Assessment History ({allAssessments.length} assessments)
+                      <Typography variant="body2">Mother ID:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                        {motherId}
                       </Typography>
+                      <IconButton
+                        size="small"
+                        sx={{ color: 'white' }}
+                        onClick={() => {
+                          navigator.clipboard.writeText(motherId);
+                          setCopySuccess(true);
+                          setTimeout(() => setCopySuccess(false), 1500);
+                        }}
+                      >
+                        <ContentCopy fontSize="small" />
+                      </IconButton>
                     </Box>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <TableContainer component={Paper}>
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Date</TableCell>
-                            <TableCell>Risk Level</TableCell>
-                            <TableCell>Confidence</TableCell>
-                            <TableCell>Systolic BP</TableCell>
-                            <TableCell>Diastolic BP</TableCell>
-                            <TableCell>Blood Sugar</TableCell>
-                            <TableCell>Heart Rate</TableCell>
-                            <TableCell>Notes</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {allAssessments.map((assessment) => (
-                            <TableRow key={assessment.id}>
-                              <TableCell>
-                                {new Date(assessment.assessment_date).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={assessment.risk_level?.toUpperCase() || 'N/A'}
-                                  color={getRiskColor(assessment.risk_level)}
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                {assessment.confidence ? `${(assessment.confidence * 100).toFixed(1)}%` : 'N/A'}
-                              </TableCell>
-                              <TableCell>{assessment.systolic_bp} mmHg</TableCell>
-                              <TableCell>{assessment.diastolic_bp} mmHg</TableCell>
-                              <TableCell>{assessment.blood_sugar} mmol/L</TableCell>
-                              <TableCell>{assessment.heart_rate} bpm</TableCell>
-                              <TableCell>
-                                {assessment.notes ? (
-                                  <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>
-                                    {assessment.notes}
-                                  </Typography>
-                                ) : (
-                                  'No notes'
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </AccordionDetails>
-                </Accordion>
+                  )}
+                  {copySuccess && (
+                    <Typography variant="caption" sx={{ color: '#4caf50' }}>
+                      ✓ Copied to clipboard!
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {/* Latest Risk Assessment */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>Latest Risk Assessment</Typography>
+                  {latestAssessment ? (
+                    <Chip
+                      icon={getRiskIcon(latestAssessment.risk_level)}
+                      label={latestAssessment.risk_level?.toUpperCase() || 'N/A'}
+                      color={getRiskColor(latestAssessment.risk_level)}
+                    />
+                  ) : (
+                    <Alert severity="info">No assessment available</Alert>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Status Cards */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6">Health Status</Typography>
+                    <Typography variant="body1">
+                      {latestAssessment?.risk_level === 'low' ? 'Good' :
+                        latestAssessment?.risk_level === 'medium' ? 'Monitor' :
+                          latestAssessment?.risk_level === 'high' ? 'Attention' : 'Unknown'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6">Next Appointment</Typography>
+                    <Typography variant="body1">None Scheduled</Typography>
+                  </CardContent>
+                </Card>
               </Box>
-            )}
 
-            {/* Health Tips Section */}
-            <Box mt={3}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Health Tips for You
-                  </Typography>
-                  <Box display="flex" gap={2} flexWrap="wrap">
-                    <Box flex="1" minWidth="300px">
-                      <Typography variant="subtitle1" color="primary" gutterBottom>
-                        Nutrition
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        • Eat a balanced diet rich in fruits, vegetables, and whole grains
-                        • Take prenatal vitamins as prescribed
-                        • Stay hydrated by drinking plenty of water
-                      </Typography>
-                    </Box>
-                    <Box flex="1" minWidth="300px">
-                      <Typography variant="subtitle1" color="primary" gutterBottom>
-                        Exercise
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        • Engage in moderate exercise like walking or swimming
-                        • Avoid high-impact activities
-                        • Listen to your body and rest when needed
-                      </Typography>
-                    </Box>
-                    <Box flex="1" minWidth="300px">
-                      <Typography variant="subtitle1" color="primary" gutterBottom>
-                        Self-Care
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        • Get adequate sleep (7-9 hours per night)
-                        • Practice stress-reduction techniques
-                        • Attend all scheduled prenatal appointments
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Box>
+              {/* Assessment History Chart */}
+              {assessmentHistoryData.length > 0 && (
+                <Box>
+                  <Card>
+                    <CardContent>
+                      <Box display="flex" alignItems="center" justifyContent="between" mb={2}>
+                        <Box display="flex" alignItems="center" gap={2}>
+                          <Timeline color="primary" />
+                          <Typography variant="h6">Assessment History</Typography>
+                        </Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          {assessmentHistoryData.length > 1 && (
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              {assessmentHistoryData[assessmentHistoryData.length - 1].riskLevel >
+                                assessmentHistoryData[assessmentHistoryData.length - 2].riskLevel ? (
+                                <TrendingUp color="error" fontSize="small" />
+                              ) : assessmentHistoryData[assessmentHistoryData.length - 1].riskLevel <
+                                assessmentHistoryData[assessmentHistoryData.length - 2].riskLevel ? (
+                                <TrendingDown color="success" fontSize="small" />
+                              ) : null}
+                              <Typography variant="caption" color="text.secondary">
+                                {assessmentHistoryData.length} assessments
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </Box>
+                      <ResponsiveContainer width="100%" height={350}>
+                        <LineChart data={assessmentHistoryData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis domain={[0, 3]} ticks={[1, 2, 3]} />
+                          <RechartsTooltip
+                            formatter={(value: any, name: string) => {
+                              if (name === 'riskLevel') {
+                                const labels = { 1: 'Low', 2: 'Medium', 3: 'High' };
+                                return [labels[value as keyof typeof labels] || value, 'Risk Level'];
+                              }
+                              return [value, name];
+                            }}
+                          />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="riskLevel"
+                            stroke="#1976d2"
+                            strokeWidth={3}
+                            dot={{ fill: '#1976d2', strokeWidth: 2, r: 6 }}
+                            activeDot={{ r: 8 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Box>
+              )}
 
-            {/* Emergency Contact */}
-            <Box mt={3}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Emergency Information
-                  </Typography>
-                  <Alert severity="warning" sx={{ mb: 2 }}>
-                    If you experience any of the following, contact your healthcare provider immediately:
-                  </Alert>
-                  <Box display="flex" gap={2} flexWrap="wrap">
-                    <Box flex="1" minWidth="250px">
-                      <Typography variant="subtitle2" color="error" gutterBottom>
-                        Warning Signs
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        • Severe abdominal pain
-                        • Vaginal bleeding
-                        • Severe headaches
-                        • Swelling in face/hands
-                        • Decreased fetal movement
-                      </Typography>
+              {/* Quick Actions & Tips */}
+              <Box>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Quick Actions
+                    </Typography>
+                    <List dense>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Assessment color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Request Assessment"
+                          secondary="Contact your CHV for health check"
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemIcon>
+                          <CalendarToday color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Schedule Appointment"
+                          secondary="Book with your clinician"
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Phone color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Emergency Contact"
+                          secondary="Call 911 for emergencies"
+                        />
+                      </ListItem>
+                    </List>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* Assessment History Table */}
+              {allAssessments.length > 0 && (
+                <Box>
+                  <Accordion>
+                    <AccordionSummary expandIcon={<ExpandMore />}>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Timeline />
+                        <Typography variant="h6">
+                          Detailed Assessment History ({allAssessments.length} assessments)
+                        </Typography>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <TableContainer component={Paper}>
+                        <Table>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Date</TableCell>
+                              <TableCell>Risk Level</TableCell>
+                              <TableCell>Confidence</TableCell>
+                              <TableCell>Blood Pressure</TableCell>
+                              <TableCell>Blood Sugar</TableCell>
+                              <TableCell>Heart Rate</TableCell>
+                              <TableCell>Notes</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {allAssessments.map((assessment) => (
+                              <TableRow key={assessment.id} hover>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {new Date(assessment.assessment_date).toLocaleDateString()}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {new Date(assessment.assessment_date).toLocaleTimeString()}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    icon={getRiskIcon(assessment.risk_level)}
+                                    label={assessment.risk_level?.toUpperCase() || 'N/A'}
+                                    color={getRiskColor(assessment.risk_level)}
+                                    size="small"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {assessment.confidence ? (
+                                    <Box>
+                                      <Typography variant="body2">
+                                        {(assessment.confidence * 100).toFixed(1)}%
+                                      </Typography>
+                                      <LinearProgress
+                                        variant="determinate"
+                                        value={assessment.confidence * 100}
+                                        sx={{ mt: 0.5 }}
+                                      />
+                                    </Box>
+                                  ) : 'N/A'}
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {assessment.systolic_bp}/{assessment.diastolic_bp} mmHg
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {assessment.blood_sugar} mmol/L
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {assessment.heart_rate} bpm
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  {assessment.notes ? (
+                                    <Tooltip title={assessment.notes}>
+                                      <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>
+                                        {assessment.notes}
+                                      </Typography>
+                                    </Tooltip>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      No notes
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </AccordionDetails>
+                  </Accordion>
+                </Box>
+              )}
+
+              {/* Health Tips Section */}
+              <Box>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Personalized Health Tips
+                    </Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+                      <Box>
+                        <Box>
+                          <Typography variant="subtitle1" color="primary" gutterBottom>
+                            🥗 Nutrition
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            • Eat folate-rich foods (leafy greens, citrus)
+                            • Take prenatal vitamins daily
+                            • Stay hydrated (8-10 glasses water)
+                            • Limit caffeine intake
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="subtitle1" color="primary" gutterBottom>
+                          🏃‍♀️ Exercise
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          • 30 minutes moderate exercise daily
+                          • Walking, swimming, prenatal yoga
+                          • Avoid contact sports
+                          • Listen to your body
+                        </Typography>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="subtitle1" color="primary" gutterBottom>
+                          😴 Self-Care
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          • Get 7-9 hours of sleep
+                          • Practice relaxation techniques
+                          • Attend all prenatal appointments
+                          • Monitor fetal movements
+                        </Typography>
+                      </Box>
                     </Box>
-                    <Box flex="1" minWidth="250px">
-                      <Typography variant="subtitle2" color="primary" gutterBottom>
-                        Emergency Contacts
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        • Your CHV: Not assigned yet
-                        • Your Clinician: Not assigned yet
-                        • Emergency: 911
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                {/* Emergency Information */}
+                <Card sx={{ border: '2px solid #f44336' }}>
+                  <CardContent>
+                    <Typography variant="h6" color="error" gutterBottom>
+                      Emergency Information
+                    </Typography>
+                    <Alert severity="error">
+                      Call 911 immediately if you experience severe symptoms
+                    </Alert>
+                  </CardContent>
+                </Card>
+              </Box>
             </Box>
           </Box>
         ) : (
@@ -620,26 +723,26 @@ const Dashboard: React.FC = () => {
                       <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
                         {stats && Array.isArray(stats.recent_assessments)
                           ? stats.recent_assessments.slice(0, 5).map((assessment) => (
-                          <Box key={assessment.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                            <Box display="flex" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2">
-                                Mother ID: {assessment.mother_id}
+                            <Box key={assessment.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                              <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="body2">
+                                  Mother ID: {assessment.mother_id}
+                                </Typography>
+                                <Chip
+                                  label={assessment.risk_level}
+                                  color={
+                                    assessment.risk_level === 'high' ? 'error' :
+                                      assessment.risk_level === 'medium' ? 'warning' : 'success'
+                                  }
+                                  size="small"
+                                />
+                              </Box>
+                              <Typography variant="caption" color="textSecondary">
+                                {new Date(assessment.assessment_date).toLocaleDateString()}
                               </Typography>
-                              <Chip
-                                label={assessment.risk_level}
-                                color={
-                                  assessment.risk_level === 'high' ? 'error' :
-                                  assessment.risk_level === 'medium' ? 'warning' : 'success'
-                                }
-                                size="small"
-                              />
                             </Box>
-                            <Typography variant="caption" color="textSecondary">
-                              {new Date(assessment.assessment_date).toLocaleDateString()}
-                            </Typography>
-                          </Box>
-                        ))
-                        : null}
+                          ))
+                          : null}
                       </Box>
                     </CardContent>
                   </Card>
@@ -655,26 +758,26 @@ const Dashboard: React.FC = () => {
                       <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
                         {stats && Array.isArray(stats.upcoming_appointments)
                           ? stats.upcoming_appointments.slice(0, 5).map((appointment) => (
-                          <Box key={appointment.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                            <Box display="flex" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2">
-                                {appointment.reason}
+                            <Box key={appointment.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                              <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="body2">
+                                  {appointment.reason}
+                                </Typography>
+                                <Chip
+                                  label={appointment.status}
+                                  color={
+                                    appointment.status === 'confirmed' ? 'success' :
+                                      appointment.status === 'scheduled' ? 'primary' : 'default'
+                                  }
+                                  size="small"
+                                />
+                              </Box>
+                              <Typography variant="caption" color="textSecondary">
+                                {new Date(appointment.appointment_date).toLocaleDateString()}
                               </Typography>
-                              <Chip
-                                label={appointment.status}
-                                color={
-                                  appointment.status === 'confirmed' ? 'success' :
-                                  appointment.status === 'scheduled' ? 'primary' : 'default'
-                                }
-                                size="small"
-                              />
                             </Box>
-                            <Typography variant="caption" color="textSecondary">
-                              {new Date(appointment.appointment_date).toLocaleDateString()}
-                            </Typography>
-                          </Box>
-                        ))
-                        : null}
+                          ))
+                          : null}
                       </Box>
                     </CardContent>
                   </Card>

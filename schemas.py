@@ -7,7 +7,7 @@ class UserRole(str, Enum):
     PREGNANT_MOTHER = "pregnant_mother"
     CHV = "chv"
     CLINICIAN = "clinician"
-    POLICYMAKER = "policymaker"
+    ADMIN = "admin"
 
 class RiskLevel(str, Enum):
     LOW = "low"
@@ -39,7 +39,15 @@ class PregnantMotherOut(BaseModel):
     gestational_age: Optional[int] = Field(None, ge=1, le=42)
     previous_pregnancies: int = Field(..., ge=0, le=20)
     previous_complications: Optional[str]
-    emergency_contact: Optional[int] = None  # Now integer
+    emergency_contact: Optional[str] = None  # Keep as string for consistency
+    
+    @field_validator('emergency_contact', mode='before')
+    @classmethod
+    def convert_emergency_contact_to_string(cls, v):
+        """Convert emergency_contact to string if it's an integer"""
+        if v is not None and isinstance(v, int):
+            return str(v)
+        return v
     assigned_chv_id: Optional[str]
     assigned_clinician_id: Optional[str]
     address: Optional[str] = None
@@ -219,7 +227,7 @@ class MotherRegistrationIn(BaseModel):
     address: str
     next_of_kin_name: str
     next_of_kin_relationship: str
-    next_of_kin_phone: int  # Now integer
+    next_of_kin_phone: str  # Keep as string for validation
     marital_status: str
     education_level: str
     occupation: str

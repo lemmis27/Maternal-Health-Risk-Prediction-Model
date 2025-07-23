@@ -75,8 +75,40 @@ export const mothersAPI = {
   list: (skip: number = 0, limit: number = 10) =>
     api.get(`/mothers/?skip=${skip}&limit=${limit}`),
 
+  listEnhanced: (params: {
+    skip?: number;
+    limit?: number;
+    search?: string;
+    risk_filter?: string;
+    status_filter?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.skip !== undefined) queryParams.append('skip', params.skip.toString());
+    if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    if (params.search) queryParams.append('search', params.search);
+    if (params.risk_filter) queryParams.append('risk_filter', params.risk_filter);
+    if (params.status_filter) queryParams.append('status_filter', params.status_filter);
+    
+    return api.get(`/mothers/enhanced?${queryParams.toString()}`);
+  },
+
   update: (motherId: string, motherData: any) =>
     api.put(`/mothers/${motherId}`, motherData),
+
+  exportToCsv: (params: {
+    search?: string;
+    risk_filter?: string;
+    status_filter?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.search) queryParams.append('search', params.search);
+    if (params.risk_filter) queryParams.append('risk_filter', params.risk_filter);
+    if (params.status_filter) queryParams.append('status_filter', params.status_filter);
+    
+    return api.get(`/mothers/export/csv?${queryParams.toString()}`, {
+      responseType: 'blob',
+    });
+  },
 };
 
 // Risk Assessment API
@@ -114,8 +146,8 @@ export const dashboardAPI = {
   getClinicianDashboard: (clinicianId: string) =>
     api.get(`/dashboard/clinician/${clinicianId}`),
   
-  getPolicymakerDashboard: () =>
-    api.get('/dashboard/policymaker'),
+  getAdminDashboard: () =>
+    api.get('/dashboard/admin'),
   
   getClinicianPatients: (clinicianId: string, recentDays?: number) =>
     api.get(`/clinician/${clinicianId}/patients${recentDays ? `?recent_days=${recentDays}` : ''}`),

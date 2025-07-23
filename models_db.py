@@ -13,7 +13,7 @@ class UserRoleEnum(str, enum.Enum):
     PREGNANT_MOTHER = "pregnant_mother"
     CHV = "chv"
     CLINICIAN = "clinician"
-    POLICYMAKER = "policymaker"
+    ADMIN = "admin"
 
 class RiskLevelEnum(str, enum.Enum):
     LOW = "low"
@@ -54,7 +54,7 @@ class PregnantMother(Base):
     gestational_age = Column(Integer)
     previous_pregnancies = Column(Integer, default=0)
     previous_complications = Column(Text)  # Store as comma-separated string
-    emergency_contact = Column(Integer, nullable=False)
+    emergency_contact = Column(String, nullable=False)
     assigned_chv_id = Column(String, ForeignKey("users.id"))
     assigned_clinician_id = Column(String, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))

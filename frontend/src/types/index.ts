@@ -2,7 +2,7 @@ export enum UserRole {
   PREGNANT_MOTHER = 'pregnant_mother',
   CHV = 'chv',
   CLINICIAN = 'clinician',
-  POLICYMAKER = 'policymaker',
+  ADMIN = 'admin',
 }
 
 export enum RiskLevel {
@@ -120,6 +120,89 @@ export interface DashboardStats {
   low_risk_count: number;
   recent_assessments: RiskAssessment[];
   upcoming_appointments: Appointment[];
+}
+
+export interface MotherDashboardData {
+  id: string;
+  full_name: string;
+  age: number;
+  location: string;
+  phone_number: string;
+  gestational_age?: number;
+  current_risk_level: 'high' | 'medium' | 'low';
+  last_assessment_date?: string;
+  assigned_chv?: string;
+  assigned_clinician?: string;
+  registered_by: string;
+  total_assessments: number;
+  created_at?: string;
+  needs_assessment?: boolean;
+}
+
+export interface AdminDashboardData {
+  total_mothers: number;
+  total_assessments: number;
+  mothers: MotherDashboardData[];
+  risk_distribution: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  regional_statistics: Record<string, {
+    high: number;
+    medium: number;
+    low: number;
+    total: number;
+  }>;
+  system_overview: {
+    active_chvs: number;
+    active_clinicians: number;
+    total_appointments: number;
+    recent_registrations: number;
+  };
+}
+
+export interface ClinicianDashboardData {
+  total_mothers: number;
+  high_risk_cases: number;
+  upcoming_appointments: number;
+  risk_distribution: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  mothers: MotherDashboardData[];
+  appointments: Array<{
+    id: string;
+    mother_name: string;
+    appointment_date: string;
+    reason: string;
+    status: string;
+  }>;
+  recent_registrations: number;
+}
+
+export interface CHVDashboardData {
+  assigned_mothers: number;
+  total_assessments: number;
+  high_risk_count: number;
+  medium_risk_count: number;
+  low_risk_count: number;
+  risk_distribution: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  mothers: MotherDashboardData[];
+  recent_assessments: Array<{
+    id: string;
+    mother_name: string;
+    risk_level: string;
+    assessment_date: string;
+    confidence?: number;
+  }>;
+  mothers_needing_assessment: number;
+  high_risk_cases: number;
 }
 
 export interface ModelStatus {

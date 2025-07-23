@@ -214,7 +214,7 @@ class UserRole(str, Enum):
     PREGNANT_MOTHER = "pregnant_mother"
     CHV = "chv"
     CLINICIAN = "clinician"
-    POLICYMAKER = "policymaker"
+    ADMIN = "admin"
 
 class RiskLevel(str, Enum):
     LOW = "low"
@@ -256,13 +256,13 @@ class RiskAssessment(BaseModel):
     chv_id: str
     assessment_date: datetime = Field(default_factory=datetime.now)
     
-    # Vital signs matching your model's expected features
-    age: float = Field(..., description="Age of the patient", ge=10, le=70)
+    # Vital signs with clinically appropriate ranges for maternal health
+    age: float = Field(..., description="Age of the patient", ge=15, le=50)
     systolic_bp: float = Field(..., description="Systolic Blood Pressure (mmHg)", ge=70, le=200)
-    diastolic_bp: float = Field(..., description="Diastolic Blood Pressure (mmHg)", ge=49, le=120)
-    blood_sugar: float = Field(..., description="Blood Sugar level (mmol/L)", ge=6.0, le=19.0)
-    body_temp: float = Field(..., description="Body Temperature (°F)", ge=98.0, le=103.0)
-    heart_rate: int = Field(..., description="Heart Rate (bpm)", ge=7, le=90)
+    diastolic_bp: float = Field(..., description="Diastolic Blood Pressure (mmHg)", ge=40, le=120)
+    blood_sugar: float = Field(..., description="Blood Sugar level (mmol/L)", ge=2.2, le=25.0)
+    body_temp: float = Field(..., description="Body Temperature (°F)", ge=95.0, le=106.0)
+    heart_rate: int = Field(..., description="Heart Rate (bpm)", ge=40, le=150)
     
     # Additional assessment fields
     gestational_age: int
@@ -797,11 +797,11 @@ async def list_mothers(skip: int = 0, limit: int = 10, current_user: User = Depe
                         user_obj.phone_number = ''
                 except Exception as e:
                     user_obj.phone_number = ''  # fallback to empty if decryption fails
-            # Decrypt emergency_contact before validation
+            # Handle emergency_contact as string now
             emergency_contact_raw = getattr(mother, 'emergency_contact', None)
             try:
                 if emergency_contact_raw is not None:
-                    emergency_contact = int(emergency_contact_raw)
+                    emergency_contact = str(emergency_contact_raw)
                 else:
                     emergency_contact = None
             except Exception as e:
@@ -826,6 +826,213 @@ async def list_mothers(skip: int = 0, limit: int = 10, current_user: User = Depe
         return mothers_out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error in /mothers/: {str(e)}")
+
+@app.get("/mothers/enhanced", response_model=dict)
+async def get_enhanced_mothers_list(
+    skip: int = 0, 
+    limit: int = 1000, 
+    search: Optional[str] = None,
+    risk_filter: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Enhanced mothers list with filtering, search, and comprehensive data for dashboard."""
+    try:
+        cache_manager = get_cache_manager()
+        cache_key = f"enhanced_mothers:{current_user.id}:{skip}:{limit}:{search}:{risk_filter}:{status_filter}"
+        cached = cache_manager.get(cache_key)
+        if cached:
+            return cached
+        
+        # Get mothers with all related data
+        query = db.query(DBMother).options(
+            joinedload(DBMother.user),
+            joinedload(DBMother.assigned_chv),
+            joinedload(DBMother.assigned_clinician),
+            joinedload(DBMother.assessments)
+        )
+        
+        # Role-based filtering
+        if current_user.role == UserRole.CHV:
+            query = query.filter(DBMother.assigned_chv_id == current_user.id)
+        elif current_user.role == UserRole.CLINICIAN:
+            query = query.filter(DBMother.assigned_clinician_id == current_user.id)
+        # Admin sees all mothers
+        
+        mothers = query.offset(skip).limit(limit).all()
+        
+        # Process mothers data
+        mothers_data = []
+        for mother in mothers:
+            # Get latest assessment
+            latest_assessment = None
+            if mother.assessments:
+                latest_assessment = max(mother.assessments, key=lambda a: a.assessment_date)
+            
+            current_risk = 'low'  # default
+            if latest_assessment and latest_assessment.risk_level:
+                current_risk = latest_assessment.risk_level.value
+            
+            # Decrypt sensitive data
+            phone_number = ''
+            if mother.user and mother.user.phone_number:
+                try:
+                    phone_number = decrypt_sensitive_data(mother.user.phone_number)
+                except:
+                    phone_number = ''
+            
+            mother_data = {
+                'id': mother.id,
+                'full_name': mother.user.full_name if mother.user else 'Unknown',
+                'age': mother.age,
+                'gestational_age': mother.gestational_age,
+                'phone_number': phone_number,
+                'location': mother.user.location if mother.user else '',
+                'emergency_contact': str(mother.emergency_contact) if mother.emergency_contact else '',
+                'assigned_chv': mother.assigned_chv.full_name if mother.assigned_chv else None,
+                'assigned_clinician': mother.assigned_clinician.full_name if mother.assigned_clinician else None,
+                'current_risk_level': current_risk,
+                'last_assessment_date': latest_assessment.assessment_date.isoformat() if latest_assessment else None,
+                'total_assessments': len(mother.assessments),
+                'created_at': mother.created_at.isoformat() if hasattr(mother, 'created_at') and mother.created_at else None,
+                'user_id': mother.user_id,
+                'needs_assessment': not latest_assessment or (datetime.now() - latest_assessment.assessment_date).days > 30
+            }
+            
+            # Apply search filter
+            if search:
+                search_lower = search.lower()
+                if not (search_lower in mother_data['full_name'].lower() or 
+                       search_lower in mother_data['id'].lower() or
+                       search_lower in mother_data['phone_number']):
+                    continue
+            
+            # Apply risk filter
+            if risk_filter and risk_filter != 'all':
+                if mother_data['current_risk_level'] != risk_filter:
+                    continue
+            
+            # Apply status filter
+            if status_filter and status_filter != 'all':
+                if status_filter == 'high_risk' and mother_data['current_risk_level'] != 'high':
+                    continue
+                elif status_filter == 'needs_assessment' and not mother_data['needs_assessment']:
+                    continue
+                elif status_filter == 'recent':
+                    if not mother_data['created_at']:
+                        continue
+                    days_since_created = (datetime.now() - datetime.fromisoformat(mother_data['created_at'].replace('Z', '+00:00'))).days
+                    if days_since_created > 7:
+                        continue
+            
+            mothers_data.append(mother_data)
+        
+        # Calculate statistics
+        total = len(mothers_data)
+        high_risk = len([m for m in mothers_data if m['current_risk_level'] == 'high'])
+        medium_risk = len([m for m in mothers_data if m['current_risk_level'] == 'medium'])
+        low_risk = len([m for m in mothers_data if m['current_risk_level'] == 'low'])
+        needs_assessment = len([m for m in mothers_data if m['needs_assessment']])
+        
+        result = {
+            'mothers': mothers_data,
+            'statistics': {
+                'total': total,
+                'high_risk': high_risk,
+                'medium_risk': medium_risk,
+                'low_risk': low_risk,
+                'needs_assessment': needs_assessment
+            },
+            'filters_applied': {
+                'search': search,
+                'risk_filter': risk_filter,
+                'status_filter': status_filter,
+                'user_role': current_user.role.value
+            }
+        }
+        
+        cache_manager.set(cache_key, result, ttl=60)  # Cache for 1 minute
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced mothers list: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching enhanced mothers list: {str(e)}")
+
+@app.get("/mothers/export/csv")
+async def export_mothers_csv(
+    search: Optional[str] = None,
+    risk_filter: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Export mothers list to CSV format."""
+    try:
+        # Get the enhanced mothers data using the same logic
+        response_data = await get_enhanced_mothers_list(
+            skip=0, 
+            limit=10000,  # Get all mothers for export
+            search=search,
+            risk_filter=risk_filter,
+            status_filter=status_filter,
+            current_user=current_user,
+            db=db
+        )
+        
+        mothers_data = response_data['mothers']
+        
+        # Create CSV content
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'Mother ID', 'Full Name', 'Age', 'Phone Number', 'Location',
+            'Gestational Age', 'Emergency Contact', 'Risk Level',
+            'Last Assessment Date', 'Total Assessments', 'Assigned CHV',
+            'Assigned Clinician', 'Registration Date'
+        ])
+        
+        # Write data rows
+        for mother in mothers_data:
+            writer.writerow([
+                mother['id'],
+                mother['full_name'],
+                mother['age'],
+                mother['phone_number'],
+                mother['location'],
+                mother['gestational_age'] or '',
+                mother['emergency_contact'],
+                mother['current_risk_level'].upper(),
+                mother['last_assessment_date'] or 'Never',
+                mother['total_assessments'],
+                mother['assigned_chv'] or 'Not assigned',
+                mother['assigned_clinician'] or 'Not assigned',
+                mother['created_at'] or ''
+            ])
+        
+        # Create response
+        from fastapi.responses import StreamingResponse
+        output.seek(0)
+        
+        # Generate filename with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"mothers_export_{timestamp}.csv"
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting mothers CSV: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting CSV: {str(e)}")
 
 @app.post("/assessments/create", response_model=dict)
 @limiter.limit("10/minute")
@@ -1192,95 +1399,268 @@ async def prescribe_medication(medication: MedicationIn, current_user: User = De
 
 @app.get("/dashboard/chv/{chv_id}", response_model=dict)
 async def get_chv_dashboard(chv_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get CHV dashboard data, with caching."""
+    """Get CHV dashboard data with assigned mothers, with caching."""
     if current_user.role != UserRole.CHV:
         raise HTTPException(status_code=403, detail="Not authorized")
+    
     cache_manager = get_cache_manager()
     cache_key = f"dashboard:chv:{chv_id}:{current_user.id}"
     cached = cache_manager.get(cache_key)
     if cached:
         return cached
-    assigned_mothers = db.query(DBMother).filter(DBMother.assigned_chv_id == chv_id).all()
-    recent_assessments = db.query(DBRiskAssessment).filter(DBRiskAssessment.chv_id == chv_id).all()
-    high_risk_count = sum(1 for assessment in recent_assessments if assessment.risk_level is not None and assessment.risk_level.value == 'high')
-    medium_risk_count = sum(1 for assessment in recent_assessments if assessment.risk_level is not None and assessment.risk_level.value == 'medium')
-    low_risk_count = sum(1 for assessment in recent_assessments if assessment.risk_level is not None and assessment.risk_level.value == 'low')
+    
+    # Get mothers assigned to this CHV
+    assigned_mothers = db.query(DBMother).options(
+        joinedload(DBMother.user),
+        joinedload(DBMother.assessments),
+        joinedload(DBMother.assigned_clinician)
+    ).filter(DBMother.assigned_chv_id == chv_id).all()
+    
+    # Get assessments done by this CHV
+    my_assessments = db.query(DBRiskAssessment).filter(DBRiskAssessment.chv_id == chv_id).all()
+    
+    # Process mothers data
+    mothers_data = []
+    risk_distribution = {'high': 0, 'medium': 0, 'low': 0}
+    high_risk_cases = []
+    
+    for mother in assigned_mothers:
+        # Get latest assessment
+        latest_assessment = None
+        if mother.assessments:
+            latest_assessment = max(mother.assessments, key=lambda a: a.assessment_date)
+        
+        current_risk = 'low'  # default
+        if latest_assessment and latest_assessment.risk_level:
+            current_risk = latest_assessment.risk_level.value
+            if current_risk == 'high':
+                high_risk_cases.append(latest_assessment)
+        
+        risk_distribution[current_risk] += 1
+        
+        # Prepare mother data
+        mother_data = {
+            'id': mother.id,
+            'full_name': mother.user.full_name if mother.user else 'Unknown',
+            'age': mother.age,
+            'phone_number': decrypt_sensitive_data(mother.user.phone_number) if mother.user and mother.user.phone_number else '',
+            'gestational_age': mother.gestational_age,
+            'current_risk_level': current_risk,
+            'last_assessment_date': latest_assessment.assessment_date.isoformat() if latest_assessment else None,
+            'assigned_clinician': mother.assigned_clinician.full_name if mother.assigned_clinician else None,
+            'total_assessments': len(mother.assessments),
+            'needs_assessment': not latest_assessment or (datetime.now() - latest_assessment.assessment_date).days > 30
+        }
+        mothers_data.append(mother_data)
+    
+    # Sort mothers by risk level (high first) then by those needing assessment
+    mothers_data.sort(key=lambda x: (
+        0 if x['current_risk_level'] == 'high' else 1 if x['current_risk_level'] == 'medium' else 2,
+        0 if x['needs_assessment'] else 1,
+        x['last_assessment_date'] or ''
+    ), reverse=True)
+    
+    # Recent assessments done by this CHV
+    recent_assessments_data = []
+    for assessment in sorted(my_assessments, key=lambda a: a.assessment_date, reverse=True)[:10]:
+        mother = next((m for m in assigned_mothers if m.id == assessment.mother_id), None)
+        recent_assessments_data.append({
+            'id': assessment.id,
+            'mother_name': mother.user.full_name if mother and mother.user else 'Unknown',
+            'risk_level': assessment.risk_level.value if assessment.risk_level else 'low',
+            'assessment_date': assessment.assessment_date.isoformat(),
+            'confidence': assessment.confidence
+        })
+    
     dashboard = {
         "assigned_mothers": len(assigned_mothers),
-        "total_assessments": len(recent_assessments),
-        "high_risk_count": high_risk_count,
-        "medium_risk_count": medium_risk_count,
-        "low_risk_count": low_risk_count,
-        "recent_assessments": [a.__dict__ for a in recent_assessments[-10:]]
+        "total_assessments": len(my_assessments),
+        "high_risk_count": risk_distribution['high'],
+        "medium_risk_count": risk_distribution['medium'],
+        "low_risk_count": risk_distribution['low'],
+        "risk_distribution": risk_distribution,
+        "mothers": mothers_data,
+        "recent_assessments": recent_assessments_data,
+        "mothers_needing_assessment": len([m for m in mothers_data if m['needs_assessment']]),
+        "high_risk_cases": len(high_risk_cases)
     }
+    
     cache_manager.set(cache_key, dashboard, ttl=120)
     return dashboard
 
 @app.get("/dashboard/clinician/{clinician_id}", response_model=dict)
 async def get_clinician_dashboard(clinician_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get clinician dashboard data, with caching."""
+    """Get clinician dashboard data with mothers they registered, with caching."""
     if current_user.role != UserRole.CLINICIAN:
         raise HTTPException(status_code=403, detail="Not authorized")
+    
     cache_manager = get_cache_manager()
     cache_key = f"dashboard:clinician:{clinician_id}:{current_user.id}"
     cached = cache_manager.get(cache_key)
     if cached:
-        # print(f"[DASHBOARD] Returning cached dashboard for clinician {clinician_id}: {cached}")
-        logger.info(f"[DASHBOARD] Returning cached dashboard for clinician {clinician_id}: {cached}")
+        logger.info(f"[DASHBOARD] Returning cached dashboard for clinician {clinician_id}")
         return cached
-    high_risk_cases = db.query(DBRiskAssessment).filter(DBRiskAssessment.risk_level == 'high').all()
-    # print(f"[DASHBOARD] High risk cases for clinician {clinician_id}: {high_risk_cases}")
-    logger.info(f"[DASHBOARD] High risk cases for clinician {clinician_id}: {high_risk_cases}")
-    upcoming_appointments = db.query(DBAppointment).filter(
+    
+    # Get mothers registered by this clinician
+    my_mothers = db.query(DBMother).options(
+        joinedload(DBMother.user),
+        joinedload(DBMother.assessments),
+        joinedload(DBMother.appointments)
+    ).filter(DBMother.assigned_clinician_id == clinician_id).all()
+    
+    # Get high risk cases from my mothers
+    high_risk_cases = []
+    my_mothers_data = []
+    risk_distribution = {'high': 0, 'medium': 0, 'low': 0}
+    
+    for mother in my_mothers:
+        # Get latest assessment
+        latest_assessment = None
+        if mother.assessments:
+            latest_assessment = max(mother.assessments, key=lambda a: a.assessment_date)
+        
+        current_risk = 'low'  # default
+        if latest_assessment and latest_assessment.risk_level:
+            current_risk = latest_assessment.risk_level.value
+            if current_risk == 'high':
+                high_risk_cases.append(latest_assessment)
+        
+        risk_distribution[current_risk] += 1
+        
+        # Prepare mother data
+        mother_data = {
+            'id': mother.id,
+            'full_name': mother.user.full_name if mother.user else 'Unknown',
+            'age': mother.age,
+            'phone_number': decrypt_sensitive_data(mother.user.phone_number) if mother.user and mother.user.phone_number else '',
+            'gestational_age': mother.gestational_age,
+            'current_risk_level': current_risk,
+            'last_assessment_date': latest_assessment.assessment_date.isoformat() if latest_assessment else None,
+            'total_assessments': len(mother.assessments),
+            'created_at': mother.created_at.isoformat() if hasattr(mother, 'created_at') and mother.created_at else None
+        }
+        my_mothers_data.append(mother_data)
+    
+    # Sort mothers by risk level (high first) then by last assessment date
+    my_mothers_data.sort(key=lambda x: (
+        0 if x['current_risk_level'] == 'high' else 1 if x['current_risk_level'] == 'medium' else 2,
+        x['last_assessment_date'] or ''
+    ), reverse=True)
+    
+    # Get upcoming appointments for this clinician
+    upcoming_appointments = db.query(DBAppointment).options(
+        joinedload(DBAppointment.mother).joinedload(DBMother.user)
+    ).filter(
         DBAppointment.clinician_id == clinician_id,
-        DBAppointment.status.in_(['scheduled', 'confirmed'])
-    ).all()
-    # print(f"[DASHBOARD] Upcoming appointments for clinician {clinician_id}: {upcoming_appointments}")
-    logger.info(f"[DASHBOARD] Upcoming appointments for clinician {clinician_id}: {upcoming_appointments}")
+        DBAppointment.status.in_(['scheduled', 'confirmed']),
+        DBAppointment.appointment_date >= datetime.now()
+    ).order_by(DBAppointment.appointment_date).all()
+    
+    appointments_data = []
+    for appointment in upcoming_appointments:
+        appointments_data.append({
+            'id': appointment.id,
+            'mother_name': appointment.mother.user.full_name if appointment.mother and appointment.mother.user else 'Unknown',
+            'appointment_date': appointment.appointment_date.isoformat(),
+            'reason': appointment.reason,
+            'status': appointment.status.value if appointment.status else 'scheduled'
+        })
+    
     dashboard = {
+        "total_mothers": len(my_mothers),
         "high_risk_cases": len(high_risk_cases),
         "upcoming_appointments": len(upcoming_appointments),
-        "high_risk_details": [a.__dict__ for a in high_risk_cases],
-        "appointments": [a.__dict__ for a in upcoming_appointments]
+        "risk_distribution": risk_distribution,
+        "mothers": my_mothers_data,
+        "appointments": appointments_data,
+        "recent_registrations": len([m for m in my_mothers_data if m['created_at'] and 
+                                   (datetime.now() - datetime.fromisoformat(m['created_at'].replace('Z', '+00:00'))).days <= 7])
     }
-    # print(f"[DASHBOARD] Dashboard dict for clinician {clinician_id}: {dashboard}")
-    logger.info(f"[DASHBOARD] Dashboard dict for clinician {clinician_id}: {dashboard}")
+    
+    logger.info(f"[DASHBOARD] Dashboard for clinician {clinician_id}: {len(my_mothers)} mothers, {len(high_risk_cases)} high risk")
     cache_manager.set(cache_key, dashboard, ttl=120)
     return dashboard
 
-@app.get("/dashboard/policymaker", response_model=dict)
-async def get_policymaker_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get policymaker dashboard data"""
-    if current_user.role != UserRole.POLICYMAKER:
+@app.get("/dashboard/admin", response_model=dict)
+async def get_admin_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get admin dashboard data with all registered mothers"""
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Not authorized")
-    # Regional statistics
-    regional_stats = {}
+    
+    # Get all mothers with their user info, assessments, and assigned staff
+    all_mothers = db.query(DBMother).options(
+        joinedload(DBMother.user),
+        joinedload(DBMother.assigned_chv),
+        joinedload(DBMother.assigned_clinician),
+        joinedload(DBMother.assessments)
+    ).all()
+    
+    # Get all assessments for statistics
     all_assessments = db.query(DBRiskAssessment).all()
-    all_mothers = db.query(DBMother).all()
-    mother_dict = {m.id: m for m in all_mothers}
-    for assessment in all_assessments:
-        mother = mother_dict.get(assessment.mother_id)
-        if mother is not None:
-            location = mother.location if hasattr(mother, 'location') else 'Unknown'
-            if location not in regional_stats:
-                regional_stats[location] = {'high': 0, 'medium': 0, 'low': 0}
-            if assessment.risk_level is not None:
-                risk_val = assessment.risk_level.value
-                if risk_val in regional_stats[location]:
-                    regional_stats[location][risk_val] += 1
-    # Overall statistics
-    total_assessments = len(all_assessments)
-    total_mothers = len(all_mothers)
     all_users = db.query(DBUser).all()
     total_appointments = db.query(DBAppointment).count()
+    
+    # Regional statistics
+    regional_stats = {}
+    risk_distribution = {'high': 0, 'medium': 0, 'low': 0}
+    
+    # Process mothers data
+    mothers_data = []
+    for mother in all_mothers:
+        # Get latest assessment
+        latest_assessment = None
+        if mother.assessments:
+            latest_assessment = max(mother.assessments, key=lambda a: a.assessment_date)
+        
+        # Update regional stats
+        user_location = mother.user.location if mother.user else 'Unknown'
+        if user_location not in regional_stats:
+            regional_stats[user_location] = {'high': 0, 'medium': 0, 'low': 0, 'total': 0}
+        regional_stats[user_location]['total'] += 1
+        
+        # Update risk distribution
+        current_risk = 'low'  # default
+        if latest_assessment and latest_assessment.risk_level:
+            current_risk = latest_assessment.risk_level.value
+            regional_stats[user_location][current_risk] += 1
+            risk_distribution[current_risk] += 1
+        else:
+            regional_stats[user_location]['low'] += 1
+            risk_distribution['low'] += 1
+        
+        # Prepare mother data
+        mother_data = {
+            'id': mother.id,
+            'full_name': mother.user.full_name if mother.user else 'Unknown',
+            'age': mother.age,
+            'location': user_location,
+            'phone_number': decrypt_sensitive_data(mother.user.phone_number) if mother.user and mother.user.phone_number else '',
+            'gestational_age': mother.gestational_age,
+            'current_risk_level': current_risk,
+            'last_assessment_date': latest_assessment.assessment_date.isoformat() if latest_assessment else None,
+            'assigned_chv': mother.assigned_chv.full_name if mother.assigned_chv else None,
+            'assigned_clinician': mother.assigned_clinician.full_name if mother.assigned_clinician else None,
+            'registered_by': 'CHV' if mother.assigned_chv else 'Clinician' if mother.assigned_clinician else 'System',
+            'total_assessments': len(mother.assessments),
+            'created_at': mother.created_at.isoformat() if hasattr(mother, 'created_at') and mother.created_at else None
+        }
+        mothers_data.append(mother_data)
+    
+    # Sort mothers by registration date (newest first)
+    mothers_data.sort(key=lambda x: x['created_at'] or '', reverse=True)
+    
     return {
-        "total_mothers": total_mothers,
-        "total_assessments": total_assessments,
+        "total_mothers": len(all_mothers),
+        "total_assessments": len(all_assessments),
+        "mothers": mothers_data,
+        "risk_distribution": risk_distribution,
         "regional_statistics": regional_stats,
         "system_overview": {
             "active_chvs": len([u for u in all_users if str(u.role) == 'chv' and bool(getattr(u, 'is_active', False))]),
             "active_clinicians": len([u for u in all_users if str(u.role) == 'clinician' and bool(getattr(u, 'is_active', False))]),
-            "total_appointments": total_appointments
+            "total_appointments": total_appointments,
+            "recent_registrations": len([m for m in mothers_data if m['created_at'] and 
+                                       (datetime.now() - datetime.fromisoformat(m['created_at'].replace('Z', '+00:00'))).days <= 7])
         }
     }
 
@@ -2013,6 +2393,7 @@ async def register_mother(mother: MotherRegistrationIn, current_user: User = Dep
         existing_user = db.query(DBUser).filter(
             (DBUser.username == mother.national_id) | (DBUser.email == f"{mother.national_id}@example.com")
         ).first()
+        
         if existing_user:
             logger.info(f"Linking new mother record to existing user: {existing_user.id}")
             user_id = existing_user.id
@@ -2037,42 +2418,28 @@ async def register_mother(mother: MotherRegistrationIn, current_user: User = Dep
 
         # assigned_chv_id is now optional
         assigned_chv_id = getattr(mother, 'assigned_chv_id', None)
-        # No longer require assigned_chv_id
-
-        logger.info(f"User authorized. Creating mother record...")
         
-        # Create User record for the mother
-        user_id = str(uuid.uuid4())
-        db_user = DBUser(
-            id=user_id,
-            username=mother.national_id,
-            email=f"{mother.national_id}@example.com",
-            full_name=mother.full_name,
-            role=UserRole.PREGNANT_MOTHER,
-            phone_number=encrypt_sensitive_data(mother.phone_number),
-            location=mother.address,
-            is_active=True,
-            hashed_password=encrypt_sensitive_data(mother.national_id),  # temp password
-        )
-        logger.info(f"Created user record with ID: {user_id}")
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        logger.info(f"User authorized. Creating mother record...")
         
         # Use provided mother_id if present, else generate one
         mother_id = mother.mother_id if getattr(mother, 'mother_id', None) else f"M{user_id[:8].upper()}"
+        
         # Convert previous_complications to string if it's a list
         prev_comp = mother.previous_complications
         if isinstance(prev_comp, list):
             prev_comp = ','.join(prev_comp)
+        
+        # Calculate age from date of birth
+        calculated_age = calculate_age(mother.date_of_birth)
+        
         db_mother = DBMother(
             id=str(mother_id),
             user_id=str(user_id),
-            age=int(calculate_age(mother.date_of_birth)),
+            age=calculated_age,
             gestational_age=int(mother.gestational_age) if mother.gestational_age is not None else None,
             previous_pregnancies=int(mother.gravida),
             previous_complications=prev_comp,
-            emergency_contact=str(mother.next_of_kin_phone),
+            emergency_contact=mother.next_of_kin_phone.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '') if mother.next_of_kin_phone else '',  # Store as clean string
             assigned_chv_id=str(assigned_chv_id) if assigned_chv_id else None,
             assigned_clinician_id=str(current_user.id) if current_user.role == UserRole.CLINICIAN else None,
         )
@@ -2081,32 +2448,7 @@ async def register_mother(mother: MotherRegistrationIn, current_user: User = Dep
         db.commit()
         db.refresh(db_mother)
 
-        # Create initial assessment for the new mother
-        from models_db import RiskAssessment as DBRiskAssessment
-        initial_assessment = DBRiskAssessment(
-            id=str(uuid.uuid4()),
-            mother_id=mother_id,
-            chv_id=current_user.id if current_user.role == UserRole.CHV else None,
-            assessment_date=datetime.now(),
-            age=db_mother.age or 25,
-            systolic_bp=120.0,
-            diastolic_bp=80.0,
-            blood_sugar=8.0,
-            body_temp=98.6,
-            heart_rate=72,
-            gestational_age=db_mother.gestational_age or 20,
-            weight=65.0,
-            height=165.0,
-            symptoms='',
-            notes='Auto-generated initial assessment.',
-            bmi=65.0 / ((165.0 / 100) ** 2),
-            risk_level='low',
-            risk_score=0.1,
-            confidence=0.9,
-            recommendations='Initial checkup recommended.'
-        )
-        db.add(initial_assessment)
-        db.commit()
+        # No automatic assessment creation - mother will show "Not assessed yet" status
         # Optionally, store extended info in a separate table or as JSON if needed
         logger.info(f"Mother registered successfully: {mother_id} by user {getattr(current_user, 'id', 'unknown')}")
         return {"success": True, "mother_id": mother_id, "user_id": user_id}
@@ -2124,7 +2466,17 @@ def calculate_age(date_of_birth_str: str) -> int:
 async def list_chvs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List all users with the CHV role."""
     chvs = db.query(DBUser).filter(DBUser.role == UserRole.CHV).all()
-    return [UserOut.model_validate(chv) for chv in chvs]
+    
+    # Decrypt phone numbers before validation
+    chvs_out = []
+    for chv in chvs:
+        try:
+            chv.phone_number = decrypt_sensitive_data(chv.phone_number)
+        except Exception:
+            chv.phone_number = ''  # fallback to empty if decryption fails
+        chvs_out.append(UserOut.model_validate(chv))
+    
+    return chvs_out
 
 @app.put("/mothers/{mother_id}", response_model=PregnantMotherOut)
 async def update_mother(mother_id: str, mother: MotherRegistrationIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2152,7 +2504,17 @@ async def update_mother(mother_id: str, mother: MotherRegistrationIn, current_us
 async def list_clinicians(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List all users with the CLINICIAN role."""
     clinicians = db.query(DBUser).filter(DBUser.role == UserRole.CLINICIAN).all()
-    return [UserOut.model_validate(clinician) for clinician in clinicians]
+    
+    # Decrypt phone numbers before validation
+    clinicians_out = []
+    for clinician in clinicians:
+        try:
+            clinician.phone_number = decrypt_sensitive_data(clinician.phone_number)
+        except Exception:
+            clinician.phone_number = ''  # fallback to empty if decryption fails
+        clinicians_out.append(UserOut.model_validate(clinician))
+    
+    return clinicians_out
 
 if __name__ == "__main__":
     import uvicorn

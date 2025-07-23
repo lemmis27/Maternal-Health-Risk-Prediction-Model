@@ -254,7 +254,7 @@ const Register: React.FC = () => {
                 <MenuItem value={UserRole.PREGNANT_MOTHER}>Pregnant Mother</MenuItem>
                 <MenuItem value={UserRole.CHV}>Community Health Volunteer</MenuItem>
                 <MenuItem value={UserRole.CLINICIAN}>Clinician</MenuItem>
-                <MenuItem value={UserRole.POLICYMAKER}>Policymaker</MenuItem>
+                <MenuItem value={UserRole.ADMIN}>Admin</MenuItem>
               </Select>
             </FormControl>
             <TextField
