@@ -149,6 +149,9 @@ export const dashboardAPI = {
   getAdminDashboard: () =>
     api.get('/dashboard/admin'),
   
+  getPregnantMotherDashboard: (userId: string) =>
+    api.get(`/dashboard/pregnant-mother/${userId}`),
+  
   getClinicianPatients: (clinicianId: string, recentDays?: number) =>
     api.get(`/clinician/${clinicianId}/patients${recentDays ? `?recent_days=${recentDays}` : ''}`),
 };

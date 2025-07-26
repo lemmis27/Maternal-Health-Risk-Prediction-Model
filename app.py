@@ -41,6 +41,14 @@ from fastapi import APIRouter
 from pydantic import EmailStr
 import logging
 
+# Import chatbot endpoints
+try:
+    from chatbot_endpoints import router as chatbot_router
+    CHATBOT_AVAILABLE = True
+except ImportError:
+    CHATBOT_AVAILABLE = False
+    print("Warning: Chatbot endpoints not available. Install openai package to enable.")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -132,6 +140,13 @@ For more, see the [SHAP documentation](https://shap.readthedocs.io/en/latest/).
 
 # Add rate limiter to app
 app.state.limiter = limiter
+
+# Include chatbot router if available
+if CHATBOT_AVAILABLE:
+    app.include_router(chatbot_router)
+    print("✅ Chatbot endpoints enabled")
+else:
+    print("⚠️ Chatbot endpoints disabled - install openai package to enable")
 
 # Create all tables
 print(">>> Creating all tables...")
@@ -1130,6 +1145,15 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
         db.add(db_assessment)
         db.commit()
         db.refresh(db_assessment)
+        
+        # Invalidate cache for pregnant mother dashboard
+        cache_manager = get_cache_manager()
+        mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+        if mother:
+            cache_key = f"dashboard:pregnant_mother:{mother.user_id}"
+            cache_manager.delete(cache_key)
+            logger.info(f"[CACHE] Invalidated pregnant mother dashboard cache for user {mother.user_id}")
+        
         # Log the assessment
         log_audit(
             user=current_user.id,
@@ -1663,6 +1687,101 @@ async def get_admin_dashboard(current_user: User = Depends(get_current_user), db
                                        (datetime.now() - datetime.fromisoformat(m['created_at'].replace('Z', '+00:00'))).days <= 7])
         }
     }
+
+@app.get("/dashboard/pregnant-mother/{user_id}")
+@limiter.limit("60/minute")
+async def get_pregnant_mother_dashboard(request: Request, user_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get optimized dashboard for pregnant mothers with caching."""
+    # Verify user can access this dashboard
+    if current_user.role != UserRole.PREGNANT_MOTHER or current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    cache_manager = get_cache_manager()
+    cache_key = f"dashboard:pregnant_mother:{user_id}"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        logger.info(f"[DASHBOARD] Returning cached dashboard for pregnant mother {user_id}")
+        return cached
+    
+    try:
+        # Get mother record by user_id
+        mother = db.query(DBMother).filter(DBMother.user_id == user_id).first()
+        if not mother:
+            raise HTTPException(status_code=404, detail="Mother record not found")
+        
+        # Get all assessments for this mother with eager loading
+        assessments = db.query(DBRiskAssessment).filter(
+            DBRiskAssessment.mother_id == mother.id
+        ).order_by(DBRiskAssessment.assessment_date.desc()).all()
+        
+        # Get upcoming appointments
+        appointments = db.query(DBAppointment).filter(
+            DBAppointment.mother_id == mother.id,
+            DBAppointment.appointment_date >= datetime.now()
+        ).order_by(DBAppointment.appointment_date.asc()).limit(5).all()
+        
+        # Prepare assessment data
+        assessment_data = []
+        for assessment in assessments:
+            assessment_dict = {
+                "id": assessment.id,
+                "assessment_date": assessment.assessment_date.isoformat(),
+                "risk_level": assessment.risk_level,
+                "confidence": assessment.confidence,
+                "systolic_bp": assessment.systolic_bp,
+                "diastolic_bp": assessment.diastolic_bp,
+                "blood_sugar": assessment.blood_sugar,
+                "heart_rate": assessment.heart_rate,
+                "notes": assessment.notes,
+                "shap_explanation": assessment.shap_explanation
+            }
+            assessment_data.append(assessment_dict)
+        
+        # Prepare appointment data
+        appointment_data = []
+        for appointment in appointments:
+            appointment_dict = {
+                "id": appointment.id,
+                "appointment_date": appointment.appointment_date.isoformat(),
+                "status": appointment.status,
+                "reason": appointment.reason,
+                "notes": appointment.notes
+            }
+            appointment_data.append(appointment_dict)
+        
+        # Prepare mother data
+        mother_data = {
+            "id": mother.id,
+            "user_id": mother.user_id,
+            "age": mother.age,
+            "gestational_age": mother.gestational_age,
+            "emergency_contact": mother.emergency_contact,
+            "assigned_chv_id": mother.assigned_chv_id,
+            "assigned_clinician_id": mother.assigned_clinician_id
+        }
+        
+        dashboard = {
+            "mother": mother_data,
+            "assessments": assessment_data,
+            "appointments": appointment_data,
+            "stats": {
+                "total_assessments": len(assessment_data),
+                "high_risk_count": len([a for a in assessment_data if a["risk_level"] == "high"]),
+                "medium_risk_count": len([a for a in assessment_data if a["risk_level"] == "medium"]),
+                "low_risk_count": len([a for a in assessment_data if a["risk_level"] == "low"]),
+                "upcoming_appointments": len(appointment_data)
+            }
+        }
+        
+        # Cache for 2 minutes (shorter TTL for pregnant mothers to ensure fresh data)
+        cache_manager.set(cache_key, dashboard, ttl=120)
+        
+        logger.info(f"[DASHBOARD] Generated dashboard for pregnant mother {user_id}: {len(assessment_data)} assessments, {len(appointment_data)} appointments")
+        return dashboard
+        
+    except Exception as e:
+        logger.error(f"Error generating pregnant mother dashboard for {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate dashboard: {str(e)}")
 
 # Model status and testing endpoints
 @app.get("/model/status")

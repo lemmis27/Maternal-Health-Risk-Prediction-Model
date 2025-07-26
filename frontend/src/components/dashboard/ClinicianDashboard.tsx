@@ -52,7 +52,6 @@ import { RiskLevel, UserRole } from '../../types';
 import MotherRegistrationForm from '../mothers/MotherRegistrationForm';
 import ClinicianSidebarPanels from './ClinicianSidebarPanels';
 import { useClinicianDashboard } from './ClinicianDashboardContext';
-import { Timeline, TimelineItem, TimelineSeparator, TimelineConnector, TimelineContent, TimelineDot } from '@mui/lab';
 import { ThemeProvider, createTheme, useTheme } from '@mui/material/styles';
 
 interface PatientData {
@@ -125,6 +124,62 @@ const ClinicianDashboard: React.FC = () => {
     getRiskColor,
     fetchPatients
   } = useClinicianDashboard();
+
+  // Action column for the simplified patient list
+  const actionColumn: GridColDef = {
+    field: 'actions',
+    headerName: 'Actions',
+    width: 200,
+    sortable: false,
+    renderCell: (params: any) => (
+      <Box display="flex" gap={1} alignItems="center">
+        <Tooltip title="View Details">
+          <IconButton
+            size="small"
+            onClick={() => {
+              setSelectedPatient(params.row);
+              setDetailDialogOpen(true);
+            }}
+          >
+            <Visibility />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="New Assessment">
+          <IconButton
+            size="small"
+            color="primary"
+            onClick={() => {
+              // Navigate to assessment with pre-filled data
+              window.location.href = `/assessment?motherId=${params.row.patient.id}&age=${params.row.patient.age}&gestationalAge=${params.row.patient.gestational_age || 20}`;
+            }}
+          >
+            <Assessment />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={pinned.includes(params.row.patient.id) ? 'Unpin' : 'Pin'}>
+          <IconButton
+            size="small"
+            color={pinned.includes(params.row.patient.id) ? 'secondary' : 'default'}
+            onClick={() => handlePin(params.row.patient.id)}
+          >
+            <PushPin />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    ),
+  };
+
+  // Simplified columns array with only essential information
+  const simplifiedColumns = [
+    columns[0], // Patient ID
+    columns[1], // Age  
+    columns[2], // Gestational Age
+    columns[3], // Risk Level
+    columns[4], // Last Assessment
+    columns[5], // Next Appointment
+    columns[6], // Confidence
+    actionColumn
+  ];
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
@@ -133,6 +188,17 @@ const ClinicianDashboard: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
   const pinnedPatients = patients.filter((p) => pinned.includes(p.patient.id));
+  
+  const handlePin = (id: string) => {
+    let updated;
+    if (pinned.includes(id)) {
+      updated = pinned.filter((pid) => pid !== id);
+    } else {
+      updated = [...pinned, id];
+    }
+    setPinned(updated);
+    localStorage.setItem('pinnedPatients', JSON.stringify(updated));
+  };
   const [cardPrefs, setCardPrefs] = useState(() => {
     const saved = localStorage.getItem('dashboardCardPrefs');
     return saved ? JSON.parse(saved) : {
@@ -494,7 +560,7 @@ const ClinicianDashboard: React.FC = () => {
                 <Box sx={{ height: { xs: 400, sm: 500 }, width: '100%' }}>
                   <DataGrid
                     rows={patients}
-                    columns={columns}
+                    columns={simplifiedColumns}
                     getRowId={(row) => row.patient.id}
                     initialState={{
                       pagination: {
@@ -587,70 +653,65 @@ const ClinicianDashboard: React.FC = () => {
                 <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
                   Activity Log
                 </Typography>
-                <Timeline position="right" sx={{ mb: 2 }}>
+                <List dense sx={{ mb: 2 }}>
                   {/* Registration */}
                   {selectedPatient.patient.created_at && (
-                    <TimelineItem>
-                      <TimelineSeparator>
-                        <TimelineDot color="primary" />
-                        <TimelineConnector />
-                      </TimelineSeparator>
-                      <TimelineContent>
-                        <Typography variant="body2">
-                          Registered: {new Date(selectedPatient.patient.created_at).toLocaleDateString()}
-                        </Typography>
-                      </TimelineContent>
-                    </TimelineItem>
+                    <ListItem>
+                      <ListItemIcon>
+                        <People color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary="Patient Registered"
+                        secondary={new Date(selectedPatient.patient.created_at).toLocaleDateString()}
+                      />
+                    </ListItem>
                   )}
+                  
                   {/* Assessments */}
                   {selectedPatient.all_assessments && selectedPatient.all_assessments.length > 0 && selectedPatient.all_assessments
                     .sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime())
                     .map((a: any) => (
-                      <TimelineItem key={a.id}>
-                        <TimelineSeparator>
-                          <TimelineDot color={a.risk_level === 'high' ? 'error' : a.risk_level === 'medium' ? 'warning' : 'success'} />
-                          <TimelineConnector />
-                        </TimelineSeparator>
-                        <TimelineContent>
-                          <Typography variant="body2">
-                            Assessment: {new Date(a.assessment_date).toLocaleDateString()} (Risk: {a.risk_level?.toUpperCase()})
-                          </Typography>
-                        </TimelineContent>
-                      </TimelineItem>
+                      <ListItem key={a.id}>
+                        <ListItemIcon>
+                          <Assessment color={a.risk_level === 'high' ? 'error' : a.risk_level === 'medium' ? 'warning' : 'success'} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={`Risk Assessment - ${a.risk_level?.toUpperCase()} Risk`}
+                          secondary={new Date(a.assessment_date).toLocaleDateString()}
+                        />
+                      </ListItem>
                     ))}
+                  
                   {/* Appointments */}
                   {selectedPatient.all_appointments && selectedPatient.all_appointments.length > 0 && selectedPatient.all_appointments
                     .sort((a, b) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime())
                     .map((appt: any) => (
-                      <TimelineItem key={appt.id}>
-                        <TimelineSeparator>
-                          <TimelineDot color="info" />
-                          <TimelineConnector />
-                        </TimelineSeparator>
-                        <TimelineContent>
-                          <Typography variant="body2">
-                            Appointment: {new Date(appt.appointment_date).toLocaleDateString()} (Status: {appt.status})
-                          </Typography>
-                        </TimelineContent>
-                      </TimelineItem>
+                      <ListItem key={appt.id}>
+                        <ListItemIcon>
+                          <Schedule color="info" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={`Appointment - ${appt.status}`}
+                          secondary={new Date(appt.appointment_date).toLocaleDateString()}
+                        />
+                      </ListItem>
                     ))}
+                  
                   {/* Medications */}
                   {selectedPatient.all_medications && selectedPatient.all_medications.length > 0 && selectedPatient.all_medications
                     .sort((a, b) => new Date(a.prescribed_at).getTime() - new Date(b.prescribed_at).getTime())
                     .map((med: any) => (
-                      <TimelineItem key={med.id}>
-                        <TimelineSeparator>
-                          <TimelineDot color="secondary" />
-                          <TimelineConnector />
-                        </TimelineSeparator>
-                        <TimelineContent>
-                          <Typography variant="body2">
-                            Medication: {med.medication_name} ({new Date(med.prescribed_at).toLocaleDateString()})
-                          </Typography>
-                        </TimelineContent>
-                      </TimelineItem>
+                      <ListItem key={med.id}>
+                        <ListItemIcon>
+                          <AssignmentTurnedIn color="secondary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={`Medication: ${med.medication_name}`}
+                          secondary={new Date(med.prescribed_at).toLocaleDateString()}
+                        />
+                      </ListItem>
                     ))}
-                </Timeline>
+                </List>
               </Box>
             )}
           </DialogContent>
