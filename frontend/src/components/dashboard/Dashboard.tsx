@@ -29,6 +29,8 @@ import {
   ListItemIcon,
   ListItemText,
   useTheme,
+  Grid,
+  Container,
 } from '@mui/material';
 import {
   People,
@@ -379,8 +381,8 @@ const Dashboard: React.FC = () => {
           // Render ClinicianDashboard for CLINICIAN users
           <ClinicianDashboard />
         ) : user?.role === UserRole.PREGNANT_MOTHER ? (
-          // Enhanced Pregnant Mother Dashboard
-          <Box>
+          // Enhanced Pregnant Mother Dashboard with Grid Layout
+          <Container maxWidth="xl">
             {loading && (
               <Box sx={{ width: '100%', mb: 2 }}>
                 <LinearProgress />
@@ -397,131 +399,223 @@ const Dashboard: React.FC = () => {
               </Alert>
             )}
 
-            {/* Header Section with User Info */}
-            <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-              <CardContent>
-                <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
-                      <PregnantWoman sx={{ fontSize: 32 }} />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-                        Welcome, {user.full_name}!
-                      </Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                        Your maternal health dashboard
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Tooltip title="Refresh Dashboard">
-                      <IconButton
-                        sx={{ color: 'white' }}
-                        onClick={() => window.location.reload()}
-                      >
-                        <Refresh />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Notifications">
-                      <IconButton sx={{ color: 'white' }}>
-                        <Badge badgeContent={0} color="error">
-                          <Notifications />
-                        </Badge>
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-
-                {/* ID Information */}
-                <Divider sx={{ my: 2, bgcolor: 'rgba(255,255,255,0.2)' }} />
-                <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Typography variant="body2">User ID:</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
-                      {user?.id}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      sx={{ color: 'white' }}
-                      onClick={() => {
-                        if (user?.id) {
-                          navigator.clipboard.writeText(user.id);
-                          setCopySuccess(true);
-                          setTimeout(() => setCopySuccess(false), 1500);
-                        }
-                      }}
-                    >
-                      <ContentCopy fontSize="small" />
-                    </IconButton>
-                  </Box>
-                  {motherId && (
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Typography variant="body2">Mother ID:</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
-                        {motherId}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        sx={{ color: 'white' }}
-                        onClick={() => {
-                          navigator.clipboard.writeText(motherId);
-                          setCopySuccess(true);
-                          setTimeout(() => setCopySuccess(false), 1500);
-                        }}
-                      >
-                        <ContentCopy fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  )}
-                  {copySuccess && (
-                    <Typography variant="caption" sx={{ color: '#4caf50' }}>
-                      ✓ Copied to clipboard!
-                    </Typography>
-                  )}
-                </Box>
-              </CardContent>
-            </Card>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* Latest Risk Assessment */}
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>Latest Risk Assessment</Typography>
-                  {latestAssessment ? (
-                    <Chip
-                      icon={getRiskIcon(latestAssessment.risk_level)}
-                      label={latestAssessment.risk_level?.toUpperCase() || 'N/A'}
-                      color={getRiskColor(latestAssessment.risk_level)}
-                    />
-                  ) : (
-                    <Alert severity="info">No assessment available</Alert>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Status Cards */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Card>
+            <Box sx={{ display: 'grid', gap: 3 }}>
+              {/* Header Section - Full Width */}
+              <Box>
+                <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
                   <CardContent>
-                    <Typography variant="h6">Health Status</Typography>
-                    <Typography variant="body1">
-                      {latestAssessment?.risk_level === 'low' ? 'Good' :
-                        latestAssessment?.risk_level === 'medium' ? 'Monitor' :
-                          latestAssessment?.risk_level === 'high' ? 'Attention' : 'Unknown'}
-                    </Typography>
-                  </CardContent>
-                </Card>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
+                          <PregnantWoman sx={{ fontSize: 32 }} />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
+                            Welcome, {user.full_name}!
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                            Your maternal health dashboard
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Tooltip title="Refresh Dashboard">
+                          <IconButton
+                            sx={{ color: 'white' }}
+                            onClick={() => window.location.reload()}
+                          >
+                            <Refresh />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Notifications">
+                          <IconButton sx={{ color: 'white' }}>
+                            <Badge badgeContent={0} color="error">
+                              <Notifications />
+                            </Badge>
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
 
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6">Next Appointment</Typography>
-                    <Typography variant="body1">None Scheduled</Typography>
+                    {/* ID Information */}
+                    <Divider sx={{ my: 2, bgcolor: 'rgba(255,255,255,0.2)' }} />
+                    <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Typography variant="body2">User ID:</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                          {user?.id}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          sx={{ color: 'white' }}
+                          onClick={() => {
+                            if (user?.id) {
+                              navigator.clipboard.writeText(user.id);
+                              setCopySuccess(true);
+                              setTimeout(() => setCopySuccess(false), 1500);
+                            }
+                          }}
+                        >
+                          <ContentCopy fontSize="small" />
+                        </IconButton>
+                      </Box>
+                      {motherId && (
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2">Mother ID:</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                            {motherId}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            sx={{ color: 'white' }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(motherId);
+                              setCopySuccess(true);
+                              setTimeout(() => setCopySuccess(false), 1500);
+                            }}
+                          >
+                            <ContentCopy fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      )}
+                      {copySuccess && (
+                        <Typography variant="caption" sx={{ color: '#4caf50' }}>
+                          ✓ Copied to clipboard!
+                        </Typography>
+                      )}
+                    </Box>
                   </CardContent>
                 </Card>
               </Box>
 
-              {/* Assessment History Chart */}
+              {/* Quick Status Cards Row */}
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                gap: 3 
+              }}>
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Box display="flex" alignItems="center" gap={2} mb={2}>
+                      <Avatar sx={{ bgcolor: 'primary.main' }}>
+                        <Assessment />
+                      </Avatar>
+                      <Typography variant="h6">Latest Risk Assessment</Typography>
+                    </Box>
+                    {latestAssessment ? (
+                      <Box>
+                        <Chip
+                          icon={getRiskIcon(latestAssessment.risk_level)}
+                          label={latestAssessment.risk_level?.toUpperCase() || 'N/A'}
+                          color={getRiskColor(latestAssessment.risk_level)}
+                          size="medium"
+                          sx={{ mb: 1 }}
+                        />
+                        <Typography variant="body2" color="text.secondary">
+                          {new Date(latestAssessment.assessment_date).toLocaleDateString()}
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Alert severity="info">No assessment available</Alert>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Box display="flex" alignItems="center" gap={2} mb={2}>
+                      <Avatar sx={{ bgcolor: 'success.main' }}>
+                        <HealthAndSafety />
+                      </Avatar>
+                      <Typography variant="h6">Health Status</Typography>
+                    </Box>
+                    <Typography variant="h5" color="primary" gutterBottom>
+                      {latestAssessment?.risk_level === 'low' ? 'Good' :
+                        latestAssessment?.risk_level === 'medium' ? 'Monitor' :
+                          latestAssessment?.risk_level === 'high' ? 'Attention' : 'Unknown'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Based on latest assessment
+                    </Typography>
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Box display="flex" alignItems="center" gap={2} mb={2}>
+                      <Avatar sx={{ bgcolor: 'info.main' }}>
+                        <CalendarToday />
+                      </Avatar>
+                      <Typography variant="h6">Next Appointment</Typography>
+                    </Box>
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      None Scheduled
+                    </Typography>
+                    <Button variant="outlined" size="small" startIcon={<Schedule />}>
+                      Schedule Now
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* Vital Signs Summary Row */}
+              {latestAssessment && (
+                <Box sx={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+                  gap: 2 
+                }}>
+                  <Card sx={{ textAlign: 'center', py: 2 }}>
+                    <CardContent>
+                      <MonitorHeart color="error" sx={{ fontSize: 40, mb: 1 }} />
+                      <Typography variant="h6" color="error">
+                        {latestAssessment.systolic_bp}/{latestAssessment.diastolic_bp}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Blood Pressure (mmHg)
+                      </Typography>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ textAlign: 'center', py: 2 }}>
+                    <CardContent>
+                      <FavoriteOutlined color="primary" sx={{ fontSize: 40, mb: 1 }} />
+                      <Typography variant="h6" color="primary">
+                        {latestAssessment.heart_rate}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Heart Rate (bpm)
+                      </Typography>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ textAlign: 'center', py: 2 }}>
+                    <CardContent>
+                      <BloodtypeOutlined color="warning" sx={{ fontSize: 40, mb: 1 }} />
+                      <Typography variant="h6" color="warning.main">
+                        {latestAssessment.blood_sugar}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Blood Sugar (mmol/L)
+                      </Typography>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ textAlign: 'center', py: 2 }}>
+                    <CardContent>
+                      <LocalHospital color="info" sx={{ fontSize: 40, mb: 1 }} />
+                      <Typography variant="h6" color="info.main">
+                        {latestAssessment.body_temp}°F
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Body Temperature
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
+              )}
+
+              {/* Assessment History Chart - Full Width */}
               {assessmentHistoryData.length > 0 && (
                 <Box>
                   <Card>
@@ -696,8 +790,12 @@ const Dashboard: React.FC = () => {
                 </Box>
               )}
 
-              {/* AI Health Assistants */}
-              <Box>
+              {/* AI Health Assistants & Quick Actions */}
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
+                gap: 3 
+              }}>
                 <Card sx={{ height: '100%' }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
@@ -721,10 +819,6 @@ const Dashboard: React.FC = () => {
                     </Box>
                   </CardContent>
                 </Card>
-              </Box>
-
-              {/* Quick Actions & Tips */}
-              <Box>
                 <Card sx={{ height: '100%' }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
@@ -860,8 +954,12 @@ const Dashboard: React.FC = () => {
                 </Box>
               )}
 
-              {/* Health Tips Section */}
-              <Box>
+              {/* Health Tips & Emergency Info */}
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' },
+                gap: 3 
+              }}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
@@ -909,8 +1007,7 @@ const Dashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Emergency Information */}
-                <Card sx={{ border: '2px solid #f44336' }}>
+                <Card sx={{ border: '2px solid #f44336', height: '100%' }}>
                   <CardContent>
                     <Typography variant="h6" color="error" gutterBottom>
                       Emergency Information
@@ -918,11 +1015,23 @@ const Dashboard: React.FC = () => {
                     <Alert severity="error">
                       Call 911 immediately if you experience severe symptoms
                     </Alert>
+                    <Box mt={2}>
+                      <Typography variant="body2" color="error" gutterBottom>
+                        <strong>Warning Signs:</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        • Severe headaches
+                        • Vision changes
+                        • Severe abdominal pain
+                        • Persistent vomiting
+                        • Decreased fetal movement
+                      </Typography>
+                    </Box>
                   </CardContent>
                 </Card>
               </Box>
             </Box>
-          </Box>
+          </Container>
         ) : (
           // Regular Dashboard for other roles
           <Box>
