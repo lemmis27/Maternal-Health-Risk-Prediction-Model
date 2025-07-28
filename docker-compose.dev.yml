@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for development
+  db:
+    image: postgres:15-alpine
+    container_name: maternal_health_db_dev
+    environment:
+      POSTGRES_DB: maternal_health_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching (development)
+  redis:
+    image: redis:7-alpine
+    container_name: maternal_health_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Development backend with hot reload
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: maternal_health_app_dev
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/maternal_health_dev
+      - SECRET_KEY=dev-secret-key-not-for-production
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/frontend/node_modules
+      - /app/venv
+      - /app/__pycache__
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend development server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: maternal_health_frontend_dev
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm start
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  default:
+    name: maternal_health_dev_network

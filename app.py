@@ -611,6 +611,15 @@ def require_any_role(allowed_roles: List[UserRole]):
 
 # API Routes
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and load balancers"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
+
 @app.options("/auth/register")
 async def options_register():
     """Handle CORS preflight for registration"""

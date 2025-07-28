@@ -11,7 +11,9 @@ if not SECRET_KEY:
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 if not SQLALCHEMY_DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable must be set for production.")
+    # Fallback to SQLite for local development
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./maternal_health.db"
+    print("⚠️  Using SQLite database. Set DATABASE_URL for PostgreSQL.")
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
