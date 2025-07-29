@@ -258,6 +258,17 @@ Our AI system analyzes your health information to predict pregnancy risks. Here'
 
     // Risk-level specific guidance
     if (input.includes('risk') || input.includes('assessment') || input.includes('level')) {
+      // Detect which specific risk level the user is asking about
+      let requestedRiskLevel = riskLevel;
+      
+      if (input.includes('high risk') || input.includes('high-risk')) {
+        requestedRiskLevel = 'high';
+      } else if (input.includes('medium risk') || input.includes('medium-risk') || input.includes('moderate risk')) {
+        requestedRiskLevel = 'medium';
+      } else if (input.includes('low risk') || input.includes('low-risk')) {
+        requestedRiskLevel = 'low';
+      }
+      
       const riskGuidance = {
         high: `**High Risk Pregnancy Management:**
 
@@ -296,7 +307,7 @@ Medium risk is manageable with proper care and monitoring.`,
         low: `**Low Risk Pregnancy Support:**
 
 ✅ **Excellent News:**
-• Your current risk level is low
+• Low risk pregnancies have favorable outcomes
 • Continue with routine prenatal care
 • Maintain healthy habits
 • Stay informed about pregnancy changes
@@ -311,9 +322,28 @@ Medium risk is manageable with proper care and monitoring.`,
 Even with low risk, staying informed and maintaining good health habits is important for optimal outcomes.`
       };
 
+      // Use the requested risk level or fall back to a general risk explanation
+      const responseText = riskGuidance[requestedRiskLevel as keyof typeof riskGuidance] || 
+        `**Understanding Risk Levels:**
+
+🎯 **Risk Categories:**
+• **High Risk**: Requires enhanced monitoring and specialized care
+• **Medium Risk**: Needs regular monitoring with some additional precautions  
+• **Low Risk**: Standard prenatal care with routine monitoring
+
+📊 **What Risk Levels Mean:**
+Risk levels help healthcare providers tailor your care plan. They're based on factors like:
+• Medical history
+• Current health status
+• Pregnancy-specific factors
+• Age and lifestyle factors
+
+💡 **Remember:**
+Risk levels are tools to optimize care - they don't predict specific outcomes but help ensure you receive appropriate monitoring and support.`;
+
       return {
         id: Date.now().toString(),
-        text: riskGuidance[riskLevel as keyof typeof riskGuidance] || riskGuidance.low,
+        text: responseText,
         sender: 'bot',
         timestamp: new Date(),
         type: 'risk-guidance'

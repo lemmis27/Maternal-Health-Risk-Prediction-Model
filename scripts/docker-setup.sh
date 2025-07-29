@@ -1,56 +1,55 @@
 #!/bin/bash
 
-# Docker Setup Script for Maternal Health System
-# This script helps set up the Docker environment
+# Docker setup script for maternal health system
+# This script will properly rebuild the frontend and backend
 
-set -e
+echo "🚀 Setting up Maternal Health System with Frontend Rebuild"
+echo "=========================================================="
 
-echo "🏥 Maternal Health System - Docker Setup"
-echo "========================================"
+# Stop any existing containers
+echo "🛑 Stopping existing containers..."
+docker-compose -f docker-compose.dev.yml down
+docker-compose down
 
-# Check if Docker is installed
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
-    exit 1
-fi
+# Remove old images to force rebuild
+echo "🗑️ Removing old images..."
+docker rmi maternal_health_project-app 2>/dev/null || true
+docker rmi maternal_health_project_app_dev 2>/dev/null || true
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
-    exit 1
-fi
+# Clean up unused Docker resources
+echo "🧹 Cleaning up Docker resources..."
+docker system prune -f
 
-# Create necessary directories
-echo "📁 Creating necessary directories..."
-mkdir -p logs models data ssl
+# Build with no cache to ensure fresh build
+echo "🔨 Building containers with fresh frontend..."
+docker-compose -f docker-compose.dev.yml build --no-cache
 
-# Copy environment file if it doesn't exist
-if [ ! -f .env ]; then
-    echo "📝 Creating .env file from template..."
-    cp .env.docker .env
-    echo "⚠️  Please edit .env file with your configuration before running the application"
-fi
+# Start the services
+echo "🚀 Starting services..."
+docker-compose -f docker-compose.dev.yml up -d
 
-# Generate a random secret key if needed
-if grep -q "your-super-secret-key" .env; then
-    echo "🔐 Generating random secret key..."
-    SECRET_KEY=$(openssl rand -base64 32)
-    sed -i "s/your-super-secret-key-change-this-in-production-make-it-long-and-random/$SECRET_KEY/g" .env
-fi
+# Wait for services to be ready
+echo "⏳ Waiting for services to start..."
+sleep 10
 
-# Build images
-echo "🔨 Building Docker images..."
-docker-compose build
+# Check service status
+echo "📊 Checking service status..."
+docker-compose -f docker-compose.dev.yml ps
 
-echo "✅ Docker setup completed!"
+# Test the API
+echo "🧪 Testing API..."
+sleep 5
+curl -f http://localhost:8000/health && echo "✅ API is healthy!" || echo "❌ API health check failed"
+
+# Show logs
+echo "📋 Recent logs:"
+docker-compose -f docker-compose.dev.yml logs --tail=20 app
+
 echo ""
-echo "Next steps:"
-echo "1. Review and edit .env file if needed"
-echo "2. Run 'docker-compose up -d' to start the application"
-echo "3. Run 'docker-compose logs -f' to view logs"
-echo "4. Access the application at http://localhost:8000"
+echo "✅ Setup complete!"
+echo "🌐 Frontend: http://localhost:8000"
+echo "🔧 API: http://localhost:8000/docs"
+echo "📊 Health: http://localhost:8000/health"
 echo ""
-echo "For development:"
-echo "- Use 'docker-compose -f docker-compose.dev.yml up' for development mode"
-echo "- Frontend will be available at http://localhost:3000"
-echo "- Backend will be available at http://localhost:8000"
+echo "To view logs: docker-compose -f docker-compose.dev.yml logs -f app"
+echo "To stop: docker-compose -f docker-compose.dev.yml down"

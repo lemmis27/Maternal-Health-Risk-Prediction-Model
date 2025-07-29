@@ -373,6 +373,25 @@ const ClinicianDashboard: React.FC = () => {
             <Typography variant="body1" color="text.secondary" gutterBottom>
               Manage your assigned patients and their risk assessments
             </Typography>
+            {user?.staff_id && (
+              <Box display="flex" alignItems="center" gap={1} mt={1}>
+                <Typography variant="body2" color="text.secondary">
+                  Staff ID:
+                </Typography>
+                <Typography variant="body2" sx={{ 
+                  fontWeight: 'bold', 
+                  fontFamily: 'monospace',
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontSize: '0.875rem'
+                }}>
+                  {user.staff_id}
+                </Typography>
+              </Box>
+            )}
           </Box>
           <Box display="flex" alignItems="center" gap={2}>
             <Box display="flex" alignItems="center" gap={1}>

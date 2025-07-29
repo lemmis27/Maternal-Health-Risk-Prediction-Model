@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Form
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Form, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -609,16 +609,272 @@ def require_any_role(allowed_roles: List[UserRole]):
         return current_user
     return role_checker
 
+# Import WebSocket components
+from websocket_manager import connection_manager, authenticate_websocket_user, handle_websocket_message
+from notification_service import notification_service, NotificationType, NotificationPriority
+from notification_triggers import notification_triggers
+
+# Initialize WebSocket and notification services
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    await connection_manager.initialize_redis()
+    await notification_service.initialize()
+    print("✅ WebSocket and Notification services initialized")
+
 # API Routes
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Docker and load balancers"""
+    connected_users = await connection_manager.get_connected_users()
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "websocket_connections": connected_users
     }
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """WebSocket endpoint for real-time notifications"""
+    # Get token from query parameters
+    token = websocket.query_params.get("token")
+    
+    # Authenticate user
+    user = await authenticate_websocket_user(token)
+    if not user:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    
+    # Verify user_id matches authenticated user
+    if user.id != user_id:
+        await websocket.close(code=4003, reason="User ID mismatch")
+        return
+    
+    # Connect user
+    await connection_manager.connect(websocket, user_id, user.role)
+    
+    try:
+        while True:
+            # Listen for incoming messages
+            data = await websocket.receive_text()
+            try:
+                message_data = json.loads(data)
+                await handle_websocket_message(message_data, user_id, user.role)
+            except json.JSONDecodeError:
+                await connection_manager.send_personal_message(user_id, {
+                    "type": "error",
+                    "message": "Invalid JSON format"
+                })
+    except WebSocketDisconnect:
+        await connection_manager.disconnect(websocket, user_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user_id}: {e}")
+        await connection_manager.disconnect(websocket, user_id)
+
+# Notification API Endpoints
+@app.get("/notifications")
+async def get_user_notifications(
+    limit: int = 50,
+    unread_only: bool = False,
+    current_user: DBUser = Depends(get_current_user)
+):
+    """Get notifications for the current user"""
+    notifications = await notification_service.get_user_notifications(
+        user_id=current_user.id,
+        limit=limit,
+        unread_only=unread_only
+    )
+    return {"notifications": notifications}
+
+@app.post("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    current_user: DBUser = Depends(get_current_user)
+):
+    """Mark a notification as read"""
+    success = await notification_service.mark_as_read(notification_id, current_user.id)
+    if success:
+        return {"message": "Notification marked as read"}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.post("/notifications/{notification_id}/acknowledge")
+async def acknowledge_notification(
+    notification_id: str,
+    current_user: DBUser = Depends(get_current_user)
+):
+    """Acknowledge a critical notification"""
+    success = await notification_service.mark_as_acknowledged(notification_id, current_user.id)
+    if success:
+        return {"message": "Notification acknowledged"}
+    else:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.post("/notifications/{notification_id}/accept")
+async def accept_critical_notification(
+    notification_id: str,
+    request: Request,
+    current_user: DBUser = Depends(get_current_user)
+):
+    """Accept responsibility for a critical notification"""
+    try:
+        # Parse request body
+        body = await request.json()
+        
+        # Mark notification as acknowledged
+        success = await notification_service.mark_as_acknowledged(notification_id, current_user.id)
+        
+        if success:
+            # Log the acceptance action
+            logger.info(f"Critical case ACCEPTED by {current_user.staff_id} ({current_user.full_name}) for notification {notification_id}")
+            
+            # Create an audit log entry
+            log_audit(
+                user=current_user.username,
+                role=current_user.role,
+                ip=request.client.host if request and request.client else "-",
+                endpoint=f"/notifications/{notification_id}/accept",
+                action="accept_critical_case",
+                resource_id=f"{notification_id}:staff_{current_user.staff_id}"
+            )
+            
+            # Send notification to supervisors about acceptance
+            try:
+                await notification_service.send_notification(
+                    user_id="admin",  # Notify admin
+                    notification_type="case_accepted",
+                    title="🏥 Critical Case Accepted",
+                    message=f"Staff {current_user.staff_id} ({current_user.full_name}) accepted responsibility for critical case",
+                    priority="medium",
+                    data={
+                        "original_notification_id": notification_id,
+                        "accepting_staff_id": current_user.staff_id,
+                        "accepting_staff_name": current_user.full_name,
+                        "action": "accept"
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Failed to send acceptance notification: {e}")
+            
+            return {
+                "message": "Critical case accepted - responsibility assigned",
+                "staff_id": current_user.staff_id,
+                "staff_name": current_user.full_name,
+                "action": "accepted"
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Notification not found")
+            
+    except Exception as e:
+        logger.error(f"Error accepting critical notification: {e}")
+        raise HTTPException(status_code=500, detail="Failed to accept critical case")
+
+@app.post("/notifications/{notification_id}/recommend")
+async def recommend_referral_notification(
+    notification_id: str,
+    request: Request,
+    current_user: DBUser = Depends(get_current_user)
+):
+    """Recommend referral for a critical notification"""
+    try:
+        # Parse request body
+        body = await request.json()
+        recommendation_type = body.get("recommendation_type", "urgent_referral")
+        notes = body.get("notes", "")
+        
+        # Mark notification as acknowledged
+        success = await notification_service.mark_as_acknowledged(notification_id, current_user.id)
+        
+        if success:
+            # Log the recommendation action
+            logger.info(f"Referral RECOMMENDED by {current_user.staff_id} ({current_user.full_name}) for notification {notification_id}")
+            
+            # Create an audit log entry
+            log_audit(
+                user=current_user.username,
+                role=current_user.role,
+                ip=request.client.host if request and request.client else "-",
+                endpoint=f"/notifications/{notification_id}/recommend",
+                action="recommend_referral",
+                resource_id=f"{notification_id}:staff_{current_user.staff_id}:{recommendation_type}"
+            )
+            
+            # Send notification to supervisors and relevant staff about referral recommendation
+            try:
+                await notification_service.send_notification(
+                    user_id="admin",  # Notify admin
+                    notification_type="referral_recommended",
+                    title="🚨 Urgent Referral Recommended",
+                    message=f"Staff {current_user.staff_id} ({current_user.full_name}) recommends urgent referral for critical case",
+                    priority="high",
+                    data={
+                        "original_notification_id": notification_id,
+                        "recommending_staff_id": current_user.staff_id,
+                        "recommending_staff_name": current_user.full_name,
+                        "recommendation_type": recommendation_type,
+                        "notes": notes,
+                        "action": "recommend_referral"
+                    }
+                )
+                
+                # Also notify clinicians if the recommendation is from a CHV
+                if current_user.role == UserRole.CHV:
+                    # Find clinicians to notify
+                    clinicians = db.query(DBUser).filter(DBUser.role == UserRole.CLINICIAN).all()
+                    for clinician in clinicians:
+                        await notification_service.send_notification(
+                            user_id=clinician.id,
+                            notification_type="referral_recommended",
+                            title="🚨 CHV Referral Request",
+                            message=f"CHV {current_user.staff_id} requests urgent referral for critical case",
+                            priority="high",
+                            data={
+                                "original_notification_id": notification_id,
+                                "chv_staff_id": current_user.staff_id,
+                                "chv_name": current_user.full_name,
+                                "recommendation_type": recommendation_type,
+                                "notes": notes
+                            }
+                        )
+            except Exception as e:
+                logger.error(f"Failed to send referral recommendation notification: {e}")
+            
+            return {
+                "message": "Referral recommendation submitted successfully",
+                "staff_id": current_user.staff_id,
+                "staff_name": current_user.full_name,
+                "recommendation_type": recommendation_type,
+                "action": "recommend_referral"
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Notification not found")
+            
+    except Exception as e:
+        logger.error(f"Error recommending referral: {e}")
+        raise HTTPException(status_code=500, detail="Failed to submit referral recommendation")
+
+@app.get("/notifications/stats")
+async def get_notification_stats(current_user: DBUser = Depends(get_current_user)):
+    """Get notification statistics for the current user"""
+    stats = await notification_service.get_notification_stats(user_id=current_user.id)
+    return stats
+
+@app.post("/notifications/test")
+async def send_test_notification(
+    current_user: DBUser = Depends(require_any_role([UserRole.ADMIN, UserRole.CLINICIAN]))
+):
+    """Send a test notification (admin/clinician only)"""
+    await notification_service.send_notification(
+        user_id=current_user.id,
+        notification_type=NotificationType.SYSTEM_UPDATE,
+        title="🧪 Test Notification",
+        message="This is a test notification to verify the WebSocket system is working correctly.",
+        priority=NotificationPriority.MEDIUM,
+        data={"test": True, "timestamp": datetime.now().isoformat()}
+    )
+    return {"message": "Test notification sent"}
 
 @app.options("/auth/register")
 async def options_register():
@@ -645,15 +901,33 @@ async def register_user(request: Request, user: UserIn, db: Session = Depends(ge
     # Encrypt sensitive data
     encrypted_phone = encrypt_sensitive_data(user.phone_number)
     
+    # Generate user ID
+    user_uuid = str(uuid.uuid4())
+    
+    # Generate staff ID based on role
+    def generate_staff_id(role: UserRole, uuid_str: str) -> Optional[str]:
+        """Generate human-readable staff ID based on role"""
+        if role == UserRole.CLINICIAN:
+            return f"C{uuid_str[:8].upper()}"
+        elif role == UserRole.CHV:
+            return f"H{uuid_str[:8].upper()}"
+        elif role == UserRole.ADMIN:
+            return f"A{uuid_str[:8].upper()}"
+        else:
+            return None  # Pregnant mothers don't get staff IDs
+    
+    staff_id = generate_staff_id(user.role, user_uuid)
+    
     # Create new user
     db_user = DBUser(
-        id=str(uuid.uuid4()),
+        id=user_uuid,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
         role=user.role,
         phone_number=encrypted_phone,
         location=user.location,
+        staff_id=staff_id,
         hashed_password=hashed_password,
         created_at=datetime.now(),
         is_active=True
@@ -726,6 +1000,13 @@ async def login(request: Request, username: str = Form(...), password: str = For
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = create_refresh_token(data={"sub": user.username})
     
+    # Trigger login notification
+    try:
+        await notification_triggers.on_user_login(user)
+    except Exception as e:
+        logger.error(f"Error sending login notification: {e}")
+        # Don't fail login if notification fails
+    
     # Return user data along with tokens
     return {
         "access_token": access_token, 
@@ -739,6 +1020,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
             "role": user.role,
             "phone_number": decrypt_sensitive_data(user.phone_number),
             "location": user.location,
+            "staff_id": user.staff_id,
             "created_at": user.created_at,
             "is_active": user.is_active
         }
@@ -785,7 +1067,188 @@ async def get_current_user_info(current_user: User = Depends(get_current_user), 
     except Exception as e:
         raise HTTPException(status_code=404, detail="User not found")
 
+@app.get("/staff", response_model=List[UserOut])
+@limiter.limit("10/minute")
+async def get_all_staff(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all staff members (CHVs, Clinicians, Admins) with their staff IDs"""
+    
+    # Only admins and clinicians can view all staff
+    if current_user.role not in [UserRole.ADMIN, UserRole.CLINICIAN]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    log_audit(
+        user=current_user.id,
+        role=current_user.role.value,
+        ip="unknown",
+        endpoint="/staff",
+        action="view_staff_list",
+        resource_id="all"
+    )
+    
+    # Get all staff members
+    staff_members = db.query(DBUser).filter(
+        DBUser.role.in_([UserRole.CLINICIAN, UserRole.CHV, UserRole.ADMIN])
+    ).order_by(DBUser.role, DBUser.staff_id).all()
+    
+    # Decrypt phone numbers for display
+    for staff in staff_members:
+        try:
+            staff.phone_number = decrypt_sensitive_data(staff.phone_number)
+        except:
+            staff.phone_number = ''
+    
+    return staff_members
 
+@app.put("/mothers/{mother_id}/assign-staff")
+@limiter.limit("10/minute")
+async def assign_staff_to_mother(
+    request: Request,
+    mother_id: str,
+    chv_staff_id: Optional[str] = None,
+    clinician_staff_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Assign CHV and/or Clinician to a mother using their staff IDs"""
+    
+    # Only admins and clinicians can assign staff
+    if current_user.role not in [UserRole.ADMIN, UserRole.CLINICIAN]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get the mother record
+    mother = db.query(DBMother).filter(DBMother.id == mother_id).first()
+    if not mother:
+        raise HTTPException(status_code=404, detail="Mother not found")
+    
+    # Validate and assign CHV
+    if chv_staff_id:
+        chv = db.query(DBUser).filter(
+            DBUser.staff_id == chv_staff_id,
+            DBUser.role == UserRole.CHV
+        ).first()
+        if not chv:
+            raise HTTPException(status_code=404, detail=f"CHV with staff ID {chv_staff_id} not found")
+        mother.assigned_chv_id = chv.id
+    
+    # Validate and assign clinician
+    if clinician_staff_id:
+        clinician = db.query(DBUser).filter(
+            DBUser.staff_id == clinician_staff_id,
+            DBUser.role == UserRole.CLINICIAN
+        ).first()
+        if not clinician:
+            raise HTTPException(status_code=404, detail=f"Clinician with staff ID {clinician_staff_id} not found")
+        mother.assigned_clinician_id = clinician.id
+    
+    db.commit()
+    
+    log_audit(
+        user=current_user.id,
+        role=current_user.role.value,
+        ip="unknown",
+        endpoint="/mothers/assign-staff",
+        action="assign_staff",
+        resource_id=mother_id
+    )
+    
+    # Send notification to assigned staff
+    if chv_staff_id:
+        await notification_service.send_notification(
+            user_id=mother.assigned_chv_id,
+            notification_type=NotificationType.ASSIGNMENT_UPDATE,
+            title="👥 New Patient Assignment",
+            message=f"You have been assigned to patient {mother_id}",
+            priority=NotificationPriority.MEDIUM,
+            data={"mother_id": mother_id, "assignment_type": "chv"}
+        )
+    
+    if clinician_staff_id:
+        await notification_service.send_notification(
+            user_id=mother.assigned_clinician_id,
+            notification_type=NotificationType.ASSIGNMENT_UPDATE,
+            title="👥 New Patient Assignment",
+            message=f"You have been assigned to patient {mother_id}",
+            priority=NotificationPriority.MEDIUM,
+            data={"mother_id": mother_id, "assignment_type": "clinician"}
+        )
+    
+    return {
+        "message": "Staff assigned successfully",
+        "mother_id": mother_id,
+        "assigned_chv": chv_staff_id,
+        "assigned_clinician": clinician_staff_id
+    }
+
+@app.get("/staff/{staff_id}/patients")
+@limiter.limit("20/minute")
+async def get_staff_patients(
+    request: Request,
+    staff_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all patients assigned to a specific staff member by their staff ID"""
+    
+    # Find the staff member
+    staff_member = db.query(DBUser).filter(DBUser.staff_id == staff_id).first()
+    if not staff_member:
+        raise HTTPException(status_code=404, detail=f"Staff member with ID {staff_id} not found")
+    
+    # Check permissions - users can only see their own patients, admins can see all
+    if current_user.role != UserRole.ADMIN and current_user.id != staff_member.id:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get patients based on staff role
+    if staff_member.role == UserRole.CHV:
+        patients = db.query(DBMother).filter(
+            DBMother.assigned_chv_id == staff_member.id
+        ).options(joinedload(DBMother.user)).all()
+    elif staff_member.role == UserRole.CLINICIAN:
+        patients = db.query(DBMother).filter(
+            DBMother.assigned_clinician_id == staff_member.id
+        ).options(joinedload(DBMother.user)).all()
+    else:
+        raise HTTPException(status_code=400, detail="Staff member is not a CHV or Clinician")
+    
+    log_audit(
+        user=current_user.id,
+        role=current_user.role.value,
+        ip="unknown",
+        endpoint="/staff/patients",
+        action="view_staff_patients",
+        resource_id=staff_id
+    )
+    
+    # Format response
+    patient_list = []
+    for patient in patients:
+        try:
+            # Decrypt emergency contact for display
+            emergency_contact = decrypt_sensitive_data(patient.emergency_contact) if patient.emergency_contact else ""
+        except:
+            emergency_contact = ""
+        
+        patient_list.append({
+            "id": patient.id,
+            "user_id": patient.user_id,
+            "age": patient.age,
+            "gestational_age": patient.gestational_age,
+            "previous_pregnancies": patient.previous_pregnancies,
+            "emergency_contact": emergency_contact,
+            "user_info": {
+                "full_name": patient.user.full_name if patient.user else "Unknown",
+                "email": patient.user.email if patient.user else "Unknown",
+                "phone_number": decrypt_sensitive_data(patient.user.phone_number) if patient.user and patient.user.phone_number else ""
+            } if patient.user else None
+        })
+    
+    return {
+        "staff_id": staff_id,
+        "staff_name": staff_member.full_name,
+        "staff_role": staff_member.role.value,
+        "patient_count": len(patient_list),
+        "patients": patient_list
+    }
 
 @app.get("/mothers/", response_model=List[PregnantMotherOut])
 async def list_mothers(skip: int = 0, limit: int = 10, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1130,6 +1593,30 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
         symptoms_str = assessment.symptoms
         if isinstance(symptoms_str, list):
             symptoms_str = ', '.join(symptoms_str)
+        # Auto-assign staff to mother based on who performed the assessment
+        mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+        if mother:
+            assignment_updated = False
+            
+            if current_user.role == UserRole.CHV:
+                # If CHV is performing assessment and not already assigned, assign them
+                if not mother.assigned_chv_id:
+                    mother.assigned_chv_id = current_user.id
+                    assignment_updated = True
+                    logger.info(f"Auto-assigned CHV {current_user.staff_id} ({current_user.full_name}) to mother {mother.id}")
+                    
+            elif current_user.role == UserRole.CLINICIAN:
+                # If Clinician is performing assessment and not already assigned, assign them
+                if not mother.assigned_clinician_id:
+                    mother.assigned_clinician_id = current_user.id
+                    assignment_updated = True
+                    logger.info(f"Auto-assigned Clinician {current_user.staff_id} ({current_user.full_name}) to mother {mother.id}")
+            
+            # Commit assignment changes if any were made
+            if assignment_updated:
+                db.commit()
+                db.refresh(mother)
+
         # Create database record
         db_assessment = DBRiskAssessment(
             id=str(uuid.uuid4()),
@@ -1154,6 +1641,19 @@ async def create_assessment(request: Request, assessment: RiskAssessmentIn, curr
         db.add(db_assessment)
         db.commit()
         db.refresh(db_assessment)
+        
+        # Trigger notifications based on assessment results
+        try:
+            # Send notification for completed assessment
+            await notification_triggers.on_assessment_completed(db_assessment)
+            
+            # Send critical alert if high risk
+            if risk_level == RiskLevel.HIGH:
+                await notification_triggers.on_high_risk_assessment(db_assessment)
+                
+        except Exception as e:
+            logger.error(f"Error sending assessment notifications: {e}")
+            # Don't fail the assessment creation if notifications fail
         
         # Invalidate cache for pregnant mother dashboard
         cache_manager = get_cache_manager()
@@ -1266,6 +1766,30 @@ async def create_bulk_assessments(request: Request, assessments: List[RiskAssess
                 # Do NOT raise error if chv_id is still None
             else:
                 chv_id = None
+            # Auto-assign staff to mother based on who performed the assessment
+            mother = db.query(DBMother).filter(DBMother.id == assessment.mother_id).first()
+            if mother:
+                assignment_updated = False
+                
+                if current_user.role == UserRole.CHV:
+                    # If CHV is performing assessment and not already assigned, assign them
+                    if not mother.assigned_chv_id:
+                        mother.assigned_chv_id = current_user.id
+                        assignment_updated = True
+                        logger.info(f"Auto-assigned CHV {current_user.staff_id} ({current_user.full_name}) to mother {mother.id}")
+                        
+                elif current_user.role == UserRole.CLINICIAN:
+                    # If Clinician is performing assessment and not already assigned, assign them
+                    if not mother.assigned_clinician_id:
+                        mother.assigned_clinician_id = current_user.id
+                        assignment_updated = True
+                        logger.info(f"Auto-assigned Clinician {current_user.staff_id} ({current_user.full_name}) to mother {mother.id}")
+                
+                # Commit assignment changes if any were made
+                if assignment_updated:
+                    db.commit()
+                    db.refresh(mother)
+
             # Remove unconditional error for missing chv_id
             # If chv_id is still None, try to get it from the mother record
             if not chv_id:
@@ -1661,7 +2185,7 @@ async def get_admin_dashboard(current_user: User = Depends(get_current_user), db
             regional_stats[user_location]['low'] += 1
             risk_distribution['low'] += 1
         
-        # Prepare mother data
+        # Prepare mother data with staff IDs
         mother_data = {
             'id': mother.id,
             'full_name': mother.user.full_name if mother.user else 'Unknown',
@@ -1672,7 +2196,9 @@ async def get_admin_dashboard(current_user: User = Depends(get_current_user), db
             'current_risk_level': current_risk,
             'last_assessment_date': latest_assessment.assessment_date.isoformat() if latest_assessment else None,
             'assigned_chv': mother.assigned_chv.full_name if mother.assigned_chv else None,
+            'assigned_chv_staff_id': mother.assigned_chv.staff_id if mother.assigned_chv else None,
             'assigned_clinician': mother.assigned_clinician.full_name if mother.assigned_clinician else None,
+            'assigned_clinician_staff_id': mother.assigned_clinician.staff_id if mother.assigned_clinician else None,
             'registered_by': 'CHV' if mother.assigned_chv else 'Clinician' if mother.assigned_clinician else 'System',
             'total_assessments': len(mother.assessments),
             'created_at': mother.created_at.isoformat() if hasattr(mother, 'created_at') and mother.created_at else None

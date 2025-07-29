@@ -459,6 +459,27 @@ const Dashboard: React.FC = () => {
                           <ContentCopy fontSize="small" />
                         </IconButton>
                       </Box>
+                      {user?.staff_id && (
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2">Staff ID:</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace', color: '#ffeb3b' }}>
+                            {user.staff_id}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            sx={{ color: 'white' }}
+                            onClick={() => {
+                              if (user?.staff_id) {
+                                navigator.clipboard.writeText(user.staff_id);
+                                setCopySuccess(true);
+                                setTimeout(() => setCopySuccess(false), 1500);
+                              }
+                            }}
+                          >
+                            <ContentCopy fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      )}
                       {motherId && (
                         <Box display="flex" alignItems="center" gap={1}>
                           <Typography variant="body2">Mother ID:</Typography>
@@ -1038,9 +1059,30 @@ const Dashboard: React.FC = () => {
             {/* Header with registration button for CHV */}
             {user?.role === UserRole.CHV && (
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Typography variant="h5" gutterBottom>
-                  CHV Dashboard
-                </Typography>
+                <Box>
+                  <Typography variant="h5" gutterBottom>
+                    CHV Dashboard
+                  </Typography>
+                  {user?.staff_id && (
+                    <Box display="flex" alignItems="center" gap={1} mt={1}>
+                      <Typography variant="body2" color="text.secondary">
+                        Staff ID:
+                      </Typography>
+                      <Typography variant="body2" sx={{ 
+                        fontWeight: 'bold', 
+                        fontFamily: 'monospace',
+                        backgroundColor: 'primary.main',
+                        color: 'primary.contrastText',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.875rem'
+                      }}>
+                        {user.staff_id}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
                 <Button
                   variant="contained"
                   color="primary"

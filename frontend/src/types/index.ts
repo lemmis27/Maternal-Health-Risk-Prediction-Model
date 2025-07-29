@@ -26,6 +26,7 @@ export interface User {
   role: UserRole;
   phone_number: string;
   location: string;
+  staff_id?: string;
   created_at: string;
   is_active: boolean;
 }
@@ -132,7 +133,9 @@ export interface MotherDashboardData {
   current_risk_level: 'high' | 'medium' | 'low';
   last_assessment_date?: string;
   assigned_chv?: string;
+  assigned_chv_staff_id?: string;
   assigned_clinician?: string;
+  assigned_clinician_staff_id?: string;
   registered_by: string;
   total_assessments: number;
   created_at?: string;

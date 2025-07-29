@@ -32,7 +32,9 @@ interface MotherData {
   location: string;
   emergency_contact: string;
   assigned_chv?: string;
+  assigned_chv_staff_id?: string;
   assigned_clinician?: string;
+  assigned_clinician_staff_id?: string;
   current_risk_level: 'high' | 'medium' | 'low';
   last_assessment_date?: string;
   total_assessments: number;
@@ -213,12 +215,48 @@ const MothersCardView: React.FC<MothersCardViewProps> = ({
 
               {/* Assigned Staff */}
               <Box mb={2}>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  <strong>CHV:</strong> {mother.assigned_chv || 'Not assigned'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  <strong>Clinician:</strong> {mother.assigned_clinician || 'Not assigned'}
-                </Typography>
+                <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                  <Typography variant="caption" color="text.secondary">
+                    <strong>CHV:</strong> {mother.assigned_chv || 'Not assigned'}
+                  </Typography>
+                  {mother.assigned_chv_staff_id && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontFamily: 'monospace',
+                        backgroundColor: 'primary.main',
+                        color: 'primary.contrastText',
+                        px: 0.5,
+                        py: 0.25,
+                        borderRadius: 0.5,
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      {mother.assigned_chv_staff_id}
+                    </Typography>
+                  )}
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    <strong>Clinician:</strong> {mother.assigned_clinician || 'Not assigned'}
+                  </Typography>
+                  {mother.assigned_clinician_staff_id && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontFamily: 'monospace',
+                        backgroundColor: 'secondary.main',
+                        color: 'secondary.contrastText',
+                        px: 0.5,
+                        py: 0.25,
+                        borderRadius: 0.5,
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      {mother.assigned_clinician_staff_id}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
 
               {/* Actions */}

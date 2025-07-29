@@ -28,6 +28,7 @@ class UserOut(BaseModel):
     role: UserRole
     phone_number: str = Field(..., pattern=r'^\+?\d{10,15}$')
     location: str = Field(..., min_length=2, max_length=100)
+    staff_id: Optional[str] = Field(None, description="Human-readable staff ID (e.g., C123ABC45, H456DEF78)")
     created_at: datetime
     is_active: bool
     model_config = ConfigDict(from_attributes=True)
@@ -78,7 +79,7 @@ class RiskAssessmentOut(BaseModel):
     age: float = Field(..., ge=10, le=60)  # Allow for edge cases
     systolic_bp: float = Field(..., ge=70, le=200)
     diastolic_bp: float = Field(..., ge=40, le=130)
-    blood_sugar: float = Field(..., ge=2.0, le=20.0)
+    blood_sugar: float = Field(..., ge=2.2, le=25.0)
     body_temp: float = Field(..., ge=95.0, le=105.0)
     heart_rate: int = Field(..., ge=30, le=200)
     gestational_age: int = Field(..., ge=1, le=45)
@@ -183,7 +184,7 @@ class RiskAssessmentIn(BaseModel):
     age: float = Field(..., ge=10, le=70)
     systolic_bp: float = Field(..., ge=70, le=200)
     diastolic_bp: float = Field(..., ge=49, le=120)
-    blood_sugar: float = Field(..., ge=6.0, le=19.0)
+    blood_sugar: float = Field(..., ge=2.2, le=25.0)
     body_temp: float = Field(..., ge=95.0, le=103.0)  # Lower minimum to 95.0 to accommodate lower temperatures
     body_temp_unit: str = Field('F', description="Unit for body temperature: 'F' or 'C'")
     heart_rate: int = Field(..., ge=7, le=90)

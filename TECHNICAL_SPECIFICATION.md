@@ -49,6 +49,13 @@
 - **Visualization:** Charts, graphs, trend analysis
 - **Export:** Data export for external analysis
 
+#### **FR-006: Real-time Notification System**
+- **Description:** WebSocket-based real-time notifications
+- **Architecture:** FastAPI WebSocket server with Redis pub/sub
+- **Features:** Critical alerts, appointment reminders, system notifications
+- **Delivery:** Browser notifications, in-app alerts, modal dialogs
+- **Scalability:** Multi-user support with role-based message routing
+
 ### **Non-Functional Requirements**
 
 #### **NFR-001: Performance**
@@ -442,6 +449,270 @@ Error Response Format:
 Global API: 10 requests/second per IP
 Authentication: 5 requests/minute per IP
 Registration: 3 requests/minute per IP
+```
+
+---
+
+## 🔔 **WebSocket Real-time Notification System**
+
+### **Architecture Overview**
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   WebSocket     │    │   Notification  │
+│   (React)       │◄──►│   Server        │◄──►│   Service       │
+│   Port: 3000    │    │   (FastAPI)     │    │   (Redis Pub/Sub)│
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌─────────────────┐              │
+         │              │   Connection    │              │
+         │              │   Manager       │              │
+         │              │   (Redis)       │              │
+         │              └─────────────────┘              │
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 ▼
+                        ┌─────────────────┐
+                        │   Database      │
+                        │   (PostgreSQL)  │
+                        │   Notifications │
+                        └─────────────────┘
+```
+
+### **WebSocket Connection Manager**
+```python
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.user_roles: Dict[str, str] = {}
+        self.redis: Optional[aioredis.Redis] = None
+    
+    async def connect(self, websocket: WebSocket, user_id: str, user_role: str):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        self.user_roles[user_id] = user_role
+        
+        # Subscribe to user-specific and role-specific channels
+        await self._subscribe_to_channels(user_id, user_role)
+    
+    async def send_personal_message(self, user_id: str, message: Dict):
+        if user_id in self.active_connections:
+            for connection in self.active_connections[user_id]:
+                if connection.client_state == WebSocketState.CONNECTED:
+                    await connection.send_text(json.dumps(message))
+    
+    async def broadcast_to_role(self, role: str, message: Dict):
+        for user_id, user_role in self.user_roles.items():
+            if user_role == role:
+                await self.send_personal_message(user_id, message)
+```
+
+### **Notification Service**
+```python
+class NotificationService:
+    def __init__(self):
+        self.redis = aioredis.from_url("redis://redis:6379", decode_responses=True)
+    
+    async def send_notification(
+        self,
+        user_id: str,
+        notification_type: NotificationType,
+        title: str,
+        message: str,
+        priority: NotificationPriority = NotificationPriority.MEDIUM,
+        data: Dict[str, Any] = None
+    ):
+        notification = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "type": notification_type,
+            "title": title,
+            "message": message,
+            "priority": priority,
+            "data": data or {},
+            "timestamp": datetime.now().isoformat(),
+            "read": False
+        }
+        
+        # Store in database
+        await self.store_notification(notification)
+        
+        # Send real-time via WebSocket
+        await self.redis.publish(f"user:{user_id}", json.dumps(notification))
+```
+
+### **Frontend WebSocket Integration**
+```typescript
+// React Hook for WebSocket
+export const useWebSocket = () => {
+  const { user, token } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+
+  const connect = useCallback(() => {
+    if (!user || !token) return;
+    
+    const wsUrl = `ws://localhost:8000/ws/${user.id}?token=${token}`;
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => setConnectionStatus('connected');
+    ws.current.onmessage = (event) => {
+      const notification = JSON.parse(event.data);
+      setNotifications(prev => [notification, ...prev]);
+      
+      // Show browser notification for high priority
+      if (notification.priority === 'high' || notification.priority === 'critical') {
+        showBrowserNotification(notification);
+      }
+    };
+  }, [user, token]);
+
+  return { notifications, connectionStatus, connect };
+};
+```
+
+### **Notification Types & Triggers**
+```python
+class NotificationType(str, Enum):
+    HIGH_RISK_ALERT = "high_risk_alert"
+    APPOINTMENT_REMINDER = "appointment_reminder"
+    MEDICATION_REMINDER = "medication_reminder"
+    SYSTEM_UPDATE = "system_update"
+    NEW_ASSIGNMENT = "new_assignment"
+    EMERGENCY_ALERT = "emergency_alert"
+    CASE_ACCEPTED = "case_accepted"
+    REFERRAL_RECOMMENDED = "referral_recommended"
+
+# Automatic triggers
+async def on_high_risk_assessment(assessment: RiskAssessment):
+    await notification_service.send_notification(
+        user_id=assessment.chv_id,
+        notification_type=NotificationType.HIGH_RISK_ALERT,
+        title="🚨 High Risk Assessment Alert",
+        message=f"Patient requires immediate attention. Risk Score: {assessment.risk_score:.2f}",
+        priority=NotificationPriority.CRITICAL,
+        data={
+            "assessment_id": assessment.id,
+            "mother_id": assessment.mother_id,
+            "risk_score": assessment.risk_score
+        }
+    )
+```
+
+### **Critical Alert Modal System**
+```typescript
+// Critical Alert Modal Component
+const CriticalAlertModal: React.FC = () => {
+  const { criticalAlerts } = useWebSocket();
+  const [currentAlert, setCurrentAlert] = useState<CriticalAlert | null>(null);
+
+  const handleAccept = async () => {
+    // Accept responsibility for critical case
+    await fetch(`/notifications/${currentAlert.id}/accept`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        action: 'accept',
+        staff_id: user?.staff_id,
+        notes: 'Healthcare provider accepted responsibility'
+      })
+    });
+  };
+
+  const handleRecommend = async () => {
+    // Recommend referral/escalation
+    await fetch(`/notifications/${currentAlert.id}/recommend`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        action: 'recommend_referral',
+        recommendation_type: 'urgent_referral',
+        notes: 'Recommends immediate referral to higher level of care'
+      })
+    });
+  };
+
+  return (
+    <Dialog open={!!currentAlert} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ backgroundColor: 'error.main', color: 'white' }}>
+        CRITICAL ALERT - URGENT
+      </DialogTitle>
+      <DialogContent>
+        {/* Alert details */}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleAccept} variant="contained" color="success">
+          Accept & Handle
+        </Button>
+        <Button onClick={handleRecommend} variant="contained" color="warning">
+          Recommend Referral
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+```
+
+### **Database Schema for Notifications**
+```sql
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    priority VARCHAR(20) NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+    data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMP,
+    is_read BOOLEAN DEFAULT FALSE,
+    is_acknowledged BOOLEAN DEFAULT FALSE,
+    
+    -- Indexes
+    INDEX idx_notifications_user_id (user_id),
+    INDEX idx_notifications_type (type),
+    INDEX idx_notifications_priority (priority),
+    INDEX idx_notifications_created_at (created_at),
+    INDEX idx_notifications_unread (user_id, is_read) WHERE is_read = FALSE
+);
+```
+
+### **WebSocket Security**
+```python
+async def authenticate_websocket_user(token: str) -> Optional[User]:
+    """Authenticate user for WebSocket connection"""
+    if not token:
+        return None
+    
+    try:
+        # Verify JWT token
+        username = verify_token(type('MockCredentials', (), {'credentials': token})())
+        
+        # Get user from database
+        db = SessionLocal()
+        try:
+            user = db.query(DBUser).filter(DBUser.username == username).first()
+            return user
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        return None
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    # Authenticate user
+    token = websocket.query_params.get("token")
+    user = await authenticate_websocket_user(token)
+    
+    if not user or user.id != user_id:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    
+    await connection_manager.connect(websocket, user_id, user.role)
+    # Handle connection lifecycle
 ```
 
 ---

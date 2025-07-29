@@ -70,7 +70,9 @@ export interface MotherData {
   location: string;
   emergency_contact: string;
   assigned_chv?: string;
+  assigned_chv_staff_id?: string;
   assigned_clinician?: string;
+  assigned_clinician_staff_id?: string;
   current_risk_level: 'high' | 'medium' | 'low';
   last_assessment_date?: string;
   total_assessments: number;
@@ -723,14 +725,50 @@ const EnhancedMothersList: React.FC = () => {
                       <TableCell>
                         <Box>
                           {mother.assigned_chv && (
-                            <Typography variant="caption" display="block">
-                              CHV: {mother.assigned_chv}
-                            </Typography>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <Typography variant="caption" display="block">
+                                CHV: {mother.assigned_chv}
+                              </Typography>
+                              {mother.assigned_chv_staff_id && (
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontFamily: 'monospace',
+                                    backgroundColor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    px: 0.5,
+                                    py: 0.25,
+                                    borderRadius: 0.5,
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  {mother.assigned_chv_staff_id}
+                                </Typography>
+                              )}
+                            </Box>
                           )}
                           {mother.assigned_clinician && (
-                            <Typography variant="caption" display="block">
-                              Clinician: {mother.assigned_clinician}
-                            </Typography>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="caption" display="block">
+                                Clinician: {mother.assigned_clinician}
+                              </Typography>
+                              {mother.assigned_clinician_staff_id && (
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontFamily: 'monospace',
+                                    backgroundColor: 'secondary.main',
+                                    color: 'secondary.contrastText',
+                                    px: 0.5,
+                                    py: 0.25,
+                                    borderRadius: 0.5,
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  {mother.assigned_clinician_staff_id}
+                                </Typography>
+                              )}
+                            </Box>
                           )}
                           {!mother.assigned_chv && !mother.assigned_clinician && (
                             <Typography variant="caption" color="text.secondary">
@@ -884,8 +922,44 @@ const EnhancedMothersList: React.FC = () => {
               </Box>
               <Box mt={3}>
                 <Typography variant="h6" gutterBottom>Assigned Staff</Typography>
-                <Typography><strong>CHV:</strong> {selectedMother.assigned_chv || 'Not assigned'}</Typography>
-                <Typography><strong>Clinician:</strong> {selectedMother.assigned_clinician || 'Not assigned'}</Typography>
+                <Box display="flex" alignItems="center" gap={1} mb={1}>
+                  <Typography><strong>CHV:</strong> {selectedMother.assigned_chv || 'Not assigned'}</Typography>
+                  {selectedMother.assigned_chv_staff_id && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontFamily: 'monospace',
+                        backgroundColor: 'primary.main',
+                        color: 'primary.contrastText',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      {selectedMother.assigned_chv_staff_id}
+                    </Typography>
+                  )}
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography><strong>Clinician:</strong> {selectedMother.assigned_clinician || 'Not assigned'}</Typography>
+                  {selectedMother.assigned_clinician_staff_id && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontFamily: 'monospace',
+                        backgroundColor: 'secondary.main',
+                        color: 'secondary.contrastText',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      {selectedMother.assigned_clinician_staff_id}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
 
               {/* Latest Assessment with SHAP Results */}

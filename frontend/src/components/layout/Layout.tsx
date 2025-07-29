@@ -32,6 +32,7 @@ import {
   Notifications,
 } from '@mui/icons-material';
 import ClinicianSidebarPanels from '../dashboard/ClinicianSidebarPanels';
+import NotificationCenter from '../NotificationCenter';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserRole } from '../../types';
 
@@ -153,11 +154,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             {menuItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
           
-          <IconButton color="inherit">
-            <Badge badgeContent={4} color="error">
-              <Notifications />
-            </Badge>
-          </IconButton>
+          {/* Real-time Notification Center */}
+          <NotificationCenter />
           
           <IconButton
             size="large"

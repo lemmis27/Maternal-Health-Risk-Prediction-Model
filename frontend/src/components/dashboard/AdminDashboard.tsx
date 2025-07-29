@@ -37,8 +37,10 @@ import {
 } from '@mui/icons-material';
 import { dashboardAPI } from '../../services/api';
 import { AdminDashboardData } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminDashboard: React.FC = () => {
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,9 +120,31 @@ const AdminDashboard: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" gutterBottom>
-          Admin Dashboard
-        </Typography>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Admin Dashboard
+          </Typography>
+          {/* Add staff ID display for admin users */}
+          {user?.staff_id && (
+            <Box display="flex" alignItems="center" gap={1}>
+              <Typography variant="body2" color="text.secondary">
+                Staff ID:
+              </Typography>
+              <Typography variant="body2" sx={{ 
+                fontWeight: 'bold', 
+                fontFamily: 'monospace',
+                bgcolor: 'secondary.main',
+                color: 'white',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                fontSize: '0.875rem'
+              }}>
+                {user.staff_id}
+              </Typography>
+            </Box>
+          )}
+        </Box>
         <Box display="flex" alignItems="center" gap={2}>
           <Typography variant="body2" color="text.secondary">
             Last updated: {lastUpdated.toLocaleTimeString()}
@@ -398,14 +422,50 @@ const AdminDashboard: React.FC = () => {
                     <TableCell>
                       <Box>
                         {mother.assigned_chv && (
-                          <Typography variant="caption" display="block">
-                            CHV: {mother.assigned_chv}
-                          </Typography>
+                          <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                            <Typography variant="caption" display="block">
+                              CHV: {mother.assigned_chv}
+                            </Typography>
+                            {(mother as any).assigned_chv_staff_id && (
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  fontFamily: 'monospace',
+                                  backgroundColor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  px: 0.5,
+                                  py: 0.25,
+                                  borderRadius: 0.5,
+                                  fontSize: '0.7rem'
+                                }}
+                              >
+                                {(mother as any).assigned_chv_staff_id}
+                              </Typography>
+                            )}
+                          </Box>
                         )}
                         {mother.assigned_clinician && (
-                          <Typography variant="caption" display="block">
-                            Clinician: {mother.assigned_clinician}
-                          </Typography>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Typography variant="caption" display="block">
+                              Clinician: {mother.assigned_clinician}
+                            </Typography>
+                            {(mother as any).assigned_clinician_staff_id && (
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  fontFamily: 'monospace',
+                                  backgroundColor: 'secondary.main',
+                                  color: 'secondary.contrastText',
+                                  px: 0.5,
+                                  py: 0.25,
+                                  borderRadius: 0.5,
+                                  fontSize: '0.7rem'
+                                }}
+                              >
+                                {(mother as any).assigned_clinician_staff_id}
+                              </Typography>
+                            )}
+                          </Box>
                         )}
                         {!mother.assigned_chv && !mother.assigned_clinician && (
                           <Typography variant="caption" color="text.secondary">

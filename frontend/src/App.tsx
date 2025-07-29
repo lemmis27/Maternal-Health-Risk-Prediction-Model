@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import CriticalAlertModal from './components/CriticalAlertModal';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Dashboard from './components/dashboard/Dashboard';
@@ -98,6 +99,8 @@ function App() {
       <AuthProvider>
         <Router>
           <div className="App">
+            {/* Critical Alert Modal - Available across entire app */}
+            <CriticalAlertModal />
             <Routes>
               {/* Public Routes */}
               <Route 

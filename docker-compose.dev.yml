@@ -1,16 +1,16 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database for development
+  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: maternal_health_db_dev
     environment:
-      POSTGRES_DB: maternal_health_dev
+      POSTGRES_DB: maternal_health
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
@@ -20,68 +20,57 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis for caching (development)
+  # Redis for caching
   redis:
     image: redis:7-alpine
     container_name: maternal_health_redis_dev
     ports:
       - "6379:6379"
     volumes:
-      - redis_dev_data:/data
+      - redis_data_dev:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Development backend with hot reload
+  # Main application with development setup
   app:
     build:
       context: .
       dockerfile: Dockerfile.dev
     container_name: maternal_health_app_dev
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/maternal_health_dev
-      - SECRET_KEY=dev-secret-key-not-for-production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/maternal_health
+      - SECRET_KEY=your-secret-key-change-in-production
       - REDIS_URL=redis://redis:6379
-      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
     ports:
       - "8000:8000"
     volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - app_data_dev:/app/data
+      # Mount source code for development (optional)
       - .:/app
-      - /app/node_modules
-      - /app/frontend/node_modules
-      - /app/venv
-      - /app/__pycache__
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-
-  # Frontend development server
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: maternal_health_frontend_dev
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
-      - CHOKIDAR_USEPOLLING=true
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm start
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
-  postgres_dev_data:
-  redis_dev_data:
+  postgres_data_dev:
+  redis_data_dev:
+  app_data_dev:
 
 networks:
   default:
-    name: maternal_health_dev_network
+    name: maternal_health_network_dev

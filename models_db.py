@@ -35,6 +35,7 @@ class User(Base):
     role = Column(Enum(UserRoleEnum), nullable=False)
     phone_number = Column(String, nullable=False)
     location = Column(String, nullable=False)
+    staff_id = Column(String, unique=True, index=True, nullable=True)  # Human-readable ID for staff
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     is_active = Column(Boolean, default=True)
     hashed_password = Column(String, nullable=False)

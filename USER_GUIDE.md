@@ -22,6 +22,59 @@ The Maternal Health Risk Prediction System is a web-based application that uses 
 
 ---
 
+## 🔔 **Real-time Notifications**
+
+### **Notification System Overview**
+The system provides real-time notifications to keep you informed about important events:
+
+- **Critical Health Alerts** - Immediate notifications for high-risk assessments
+- **Appointment Reminders** - Automated reminders for upcoming appointments  
+- **System Updates** - Important system announcements and updates
+- **Assignment Notifications** - Alerts when patients are assigned to healthcare providers
+
+### **Notification Types by Role**
+
+#### **For Pregnant Mothers:**
+- Health assessment results and recommendations
+- Appointment reminders and confirmations
+- Medication reminders
+- Educational health tips
+
+#### **For CHVs (Community Health Volunteers):**
+- New patient assignments
+- High-risk assessment alerts for assigned patients
+- Appointment scheduling notifications
+- System updates and training materials
+
+#### **For Clinicians:**
+- Critical patient alerts requiring immediate attention
+- New patient referrals from CHVs
+- Assessment completion notifications
+- Appointment confirmations
+
+#### **For Administrators:**
+- System performance alerts
+- User activity summaries
+- Critical case escalations
+- System maintenance notifications
+
+### **Using Notifications**
+
+1. **Notification Bell** - Click the bell icon in the top navigation to view notifications
+2. **Real-time Updates** - Notifications appear automatically without page refresh
+3. **Critical Alerts** - High-priority alerts show as modal dialogs requiring acknowledgment
+4. **Browser Notifications** - Enable browser notifications for alerts when app is not active
+5. **Connection Status** - Green dot indicates real-time connection is active
+
+### **Managing Notifications**
+
+- **Mark as Read** - Click on notifications to mark them as read
+- **Acknowledge Critical Alerts** - Critical alerts require explicit acknowledgment
+- **Notification History** - View past notifications in the notification center
+- **Sound Alerts** - Critical alerts include audio notifications (if enabled)
+
+---
+
 ## 🚀 **Getting Started**
 
 ### **Accessing the System**

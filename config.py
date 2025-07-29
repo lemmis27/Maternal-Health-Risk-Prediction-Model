@@ -14,6 +14,13 @@ if not SQLALCHEMY_DATABASE_URL:
     # Fallback to SQLite for local development
     SQLALCHEMY_DATABASE_URL = "sqlite:///./maternal_health.db"
     print("⚠️  Using SQLite database. Set DATABASE_URL for PostgreSQL.")
+else:
+    # Check if PostgreSQL dependencies are available
+    try:
+        import psycopg2
+    except ImportError:
+        print("⚠️  PostgreSQL driver not available, falling back to SQLite")
+        SQLALCHEMY_DATABASE_URL = "sqlite:///./maternal_health.db"
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
